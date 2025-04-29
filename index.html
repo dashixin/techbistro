@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>技术小馆 · 3D知识星球</title>
+  <title>技术小馆 3D知识星球</title>
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
     body { background: #23243a; overflow: hidden; }
@@ -258,6 +258,7 @@ const categories = [
   { name: '简历相关', color: '#d1f0ee', size: 5, parent: '求职与实战类' },
   { name: '项目公共模块', color: '#d1f0ee', size: 5, parent: '求职与实战类' },
   { name: '大厂高频面试题', color: '#d1f0ee', size: 5, parent: '求职与实战类' },
+  { name: '非技术方向', color: '#d1f0ee', size: 5, parent: '求职与实战类' },
   
   // 框架与中间件类的子分类
   { name: 'SpringBoot', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
@@ -282,6 +283,7 @@ const categories = [
   { name: 'Oracle', color: '#8bd3dd', size: 5, parent: '核心技术类' },
   { name: 'Redis', color: '#8bd3dd', size: 5, parent: '核心技术类' },
   { name: '设计模式', color: '#8bd3dd', size: 5, parent: '核心技术类' },
+  { name: 'JVM', color: '#8bd3dd', size: 5, parent: '核心技术类' },
   
   // 计算机基础知识的子分类（三级分类）
   { name: '网络基础知识', color: '#e6b5b5', size: 4, parent: '计算机基础知识' },
@@ -300,6 +302,9 @@ const categories = [
   { name: 'Docker', color: '#e6b5b5', size: 4, parent: 'DevOps' },
   { name: 'Maven', color: '#e6b5b5', size: 4, parent: 'DevOps' },
   { name: 'IDEA', color: '#e6b5b5', size: 4, parent: 'DevOps' },
+  { name: 'GIT', color: '#e6b5b5', size: 4, parent: 'DevOps' },
+  { name: 'CICD', color: '#e6b5b5', size: 4, parent: 'DevOps' },
+ 
 ];
 
 // 随机生成更多连接节点
@@ -472,13 +477,28 @@ function createLabel(mesh, text) {
   const metrics = context.measureText(text);
   const textWidth = metrics.width;
   
+  // 调整Canvas宽度确保文字完全显示
+  const padding = 200; // 添加左右边距，确保文字完全显示
+  const requiredWidth = textWidth + padding * 2;
+  
+  // 如果测量到的文本宽度加上边距大于当前画布宽度，则调整画布宽度
+  if (requiredWidth > canvas.width) {
+    canvas.width = requiredWidth;
+  }
+  
   // 添加文字阴影效果提高可读性
   context.shadowColor = 'rgba(0,0,0,0.5)';
   context.shadowBlur = 5;
   context.shadowOffsetX = 2;
   context.shadowOffsetY = 2;
   
-  context.fillText(text, 384, 192);
+  // 重新设置字体，因为调整Canvas大小后会重置
+  context.font = `Bold ${fontSize}px Arial`;
+  context.fillStyle = 'white';
+  context.textAlign = 'center';
+  
+  // 文字绘制在画布中心
+  context.fillText(text, canvas.width / 2, 192);
   
   // 创建纹理和精灵
   const texture = new THREE.CanvasTexture(canvas);
@@ -492,7 +512,10 @@ function createLabel(mesh, text) {
   const sprite = new THREE.Sprite(spriteMaterial);
   const scale = mesh.userData.size ? mesh.userData.size * 0.75 : 9;
   const mobileScale = isMobile ? 0.6 : 1; // 移动端标签尺寸缩小
-  sprite.scale.set(scale * 12 * mobileScale, scale * 6 * mobileScale, 1);
+  
+  // 根据实际画布比例调整精灵大小
+  const aspectRatio = canvas.width / canvas.height;
+  sprite.scale.set(scale * 12 * mobileScale * aspectRatio, scale * 6 * mobileScale, 1);
   
   // 设置标签位置，稍微偏移
   const position = mesh.position.clone();
