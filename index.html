@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>技术小馆 · 3D知识星球</title>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    body { background: #23243a; overflow: hidden; }
+    #container { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; }
+    .tooltip {
+      position: fixed;
+      background: rgba(30,30,60,0.95);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 1em;
+      pointer-events: none;
+      z-index: 99;
+      display: none;
+      max-width: 320px;
+      left: 0; top: 0;
+    }
+    .reset-btn {
+      position: fixed;
+      right: 20px; top: 20px;
+      z-index: 100;
+      background: #1976d2;
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 0.9em;
+      cursor: pointer;
+      opacity: 0.85;
+    }
+    .reset-btn:hover { opacity: 1; }
+    
+    /* 热门文章按钮样式 */
+    .article-btn {
+      position: fixed;
+      right: 20px; top: 65px;
+      z-index: 100;
+      background: #ff7043;
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 0.9em;
+      cursor: pointer;
+      opacity: 0.85;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    .article-btn:hover { 
+      opacity: 1; 
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    
+    /* 加载指示器样式 */
+    .loading {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: #23243a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      font-size: 1.2em;
+      z-index: 1000;
+    }
+    .loading-spinner {
+      width: 50px; height: 50px;
+      border: 5px solid rgba(255,255,255,0.2);
+      border-top-color: #1976d2;
+      border-radius: 50%;
+      margin-bottom: 15px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* 触摸指引样式 */
+    .touch-instructions {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      color: rgba(255,255,255,0.7);
+      font-size: 0.9em;
+      padding: 10px;
+      z-index: 100;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    
+    /* 信息面板动画 */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    #category-info {
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    /* 移动端适配样式 */
+    @media (max-width: 768px) {
+      .tooltip {
+        font-size: 0.9em;
+        padding: 8px 14px;
+        max-width: 260px;
+      }
+      .reset-btn {
+        right: 15px;
+        top: 15px;
+        padding: 6px 12px;
+        font-size: 0.8em;
+      }
+      .article-btn {
+        right: 15px;
+        top: 55px;
+        padding: 6px 12px;
+        font-size: 0.8em;
+        max-width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .loading-spinner {
+        width: 40px; height: 40px;
+        border-width: 4px;
+      }
+      .touch-instructions {
+        opacity: 1;
+        font-size: 0.8em;
+        bottom: 15px;
+      }
+      #category-info {
+        left: 50% !important;
+        transform: translateX(-50%);
+        max-width: 85% !important;
+        font-size: 0.9em;
+        top: 60px;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="loading" id="loading">
+  <div class="loading-spinner"></div>
+  <div>加载中...</div>
+</div>
+<div id="container"></div>
+<button class="reset-btn" onclick="resetView()">重置视角</button>
+<a href="https://www.yuque.com/jtostring/qiwsg9/wi0x1wqmn9qagvpq?singleDoc#030f4600" target="_blank">
+  <button class="article-btn">技术小馆热门文章</button>
+</a>
+<div class="tooltip" id="tooltip"></div>
+<div class="touch-instructions" id="touch-instructions">单指拖动旋转 · 双指缩放</div>
+
+<!-- 使用降级版本的three.js，确保OrbitControls路径正确 -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
+
+<!-- 添加性能监控工具 -->
+<script>
+// 性能监控函数
+class PerformanceMonitor {
+  constructor() {
+    this.fpsCounter = document.createElement('div');
+    this.fpsCounter.style.position = 'fixed';
+    this.fpsCounter.style.left = '10px';
+    this.fpsCounter.style.bottom = '10px';
+    this.fpsCounter.style.color = 'rgba(255,255,255,0.5)';
+    this.fpsCounter.style.fontSize = '10px';
+    this.fpsCounter.style.fontFamily = 'monospace';
+    this.fpsCounter.style.zIndex = '1000';
+    this.fpsCounter.style.display = 'none'; // 默认隐藏
+    document.body.appendChild(this.fpsCounter);
+    
+    this.frames = 0;
+    this.lastTime = performance.now();
+    this.fps = 0;
+    
+    // 仅在开发模式显示
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      this.fpsCounter.style.display = 'block';
+    }
+  }
+  
+  update() {
+    this.frames++;
+    const now = performance.now();
+    const delta = now - this.lastTime;
+    
+    if (delta >= 1000) {
+      this.fps = Math.round((this.frames * 1000) / delta);
+      this.fpsCounter.textContent = `FPS: ${this.fps}`;
+      this.frames = 0;
+      this.lastTime = now;
+    }
+    
+    return this.fps;
+  }
+}
+
+// 技术小馆分类数据
+const categories = [
+  // 主分类
+  { name: '技术小馆学习指南', color: '#42a5f5', size: 8, isMain: true },
+  { name: '趣味学习', color: '#66bb6a', size: 8, isMain: true },
+  { name: '开发者神器库', color: '#ffa726', size: 8, isMain: true },
+  { name: '进阶提升类', color: '#42a5f5', size: 8, isMain: true },
+  { name: '求职与实战类', color: '#66bb6a', size: 8, isMain: true },
+  { name: '框架与中间件类', color: '#ffa726', size: 8, isMain: true },
+  { name: '核心技术类', color: '#42a5f5', size: 8, isMain: true },
+  { name: '基础知识类', color: '#66bb6a', size: 8, isMain: true },
+  { name: '运维与部署类', color: '#ffa726', size: 8, isMain: true },
+  
+  // 技术小馆学习指南的子分类
+  { name: '技术小馆文章更新记录', color: '#8bd3dd', size: 5, parent: '技术小馆学习指南' },
+  { name: '用户引导系统', color: '#8bd3dd', size: 5, parent: '技术小馆学习指南' },
+  { name: 'AI编程指南', color: '#8bd3dd', size: 5, parent: '技术小馆学习指南' },
+  { name: '在职提升指南', color: '#8bd3dd', size: 5, parent: '技术小馆学习指南' },
+  { name: '2025Java入门指南', color: '#8bd3dd', size: 5, parent: '技术小馆学习指南' },
+  { name: '求职者指南', color: '#8bd3dd', size: 5, parent: '技术小馆学习指南' },
+  
+  // 趣味学习的子分类
+  { name: 'AI在线图片编辑平台', color: '#d1f0ee', size: 5, parent: '趣味学习' },
+  { name: 'GitHub仓库播客', color: '#d1f0ee', size: 5, parent: '趣味学习' },
+  { name: 'AI总结工具', color: '#d1f0ee', size: 5, parent: '趣味学习' },
+  { name: '人工智能音乐创作平台', color: '#d1f0ee', size: 5, parent: '趣味学习' },
+  { name: '一句话生成脑图', color: '#d1f0ee', size: 5, parent: '趣味学习' },
+
+
+  // 开发者神器库的子分类
+  { name: '开发者工具', color: '#f9d2c7', size: 5, parent: '开发者神器库' },
+  { name: 'Chrome插件', color: '#f9d2c7', size: 5, parent: '开发者神器库' },
+  { name: '系统工具集', color: '#f9d2c7', size: 5, parent: '开发者神器库' },
+  { name: '文件处理工具', color: '#f9d2c7', size: 5, parent: '开发者神器库' },
+  { name: '系统维护与清理', color: '#f9d2c7', size: 5, parent: '开发者神器库' },
+  { name: '知识管理与效率提升', color: '#f9d2c7', size: 5, parent: '开发者神器库' },
+  { name: 'AI辅助工具', color: '#f9d2c7', size: 5, parent: '开发者神器库' },
+  
+  // 进阶提升类的子分类
+  { name: '程序员的AI方向', color: '#8bd3dd', size: 5, parent: '进阶提升类' },
+  { name: '源码分析', color: '#8bd3dd', size: 5, parent: '进阶提升类' },
+  { name: '非技术方向', color: '#8bd3dd', size: 5, parent: '进阶提升类' },
+  
+  // 求职与实战类的子分类
+  { name: '简历相关', color: '#d1f0ee', size: 5, parent: '求职与实战类' },
+  { name: '项目公共模块', color: '#d1f0ee', size: 5, parent: '求职与实战类' },
+  { name: '大厂高频面试题', color: '#d1f0ee', size: 5, parent: '求职与实战类' },
+  
+  // 框架与中间件类的子分类
+  { name: 'SpringBoot', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: '分布式', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'WebService', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'Nginx', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: '工作流', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: '搜索技术', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: '安全框架', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'ORM', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'Spring', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'JPA', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'OSS', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'Zookeeper', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'MQ', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  { name: 'Netty', color: '#f9d2c7', size: 5, parent: '框架与中间件类' },
+  
+  // 核心技术类的子分类
+  { name: '锁', color: '#8bd3dd', size: 5, parent: '核心技术类' },
+  { name: 'JUC', color: '#8bd3dd', size: 5, parent: '核心技术类' },
+  { name: 'MySQL', color: '#8bd3dd', size: 5, parent: '核心技术类' },
+  { name: 'Oracle', color: '#8bd3dd', size: 5, parent: '核心技术类' },
+  { name: 'Redis', color: '#8bd3dd', size: 5, parent: '核心技术类' },
+  { name: '设计模式', color: '#8bd3dd', size: 5, parent: '核心技术类' },
+  
+  // 计算机基础知识的子分类（三级分类）
+  { name: '网络基础知识', color: '#e6b5b5', size: 4, parent: '计算机基础知识' },
+  { name: '计算机硬件基础', color: '#e6b5b5', size: 4, parent: '计算机基础知识' },
+  { name: '操作系统', color: '#e6b5b5', size: 4, parent: '计算机基础知识' },
+  
+  // 前端/移动端相关技术的子分类（三级分类）
+  { name: 'Uniapp', color: '#e6b5b5', size: 4, parent: '前端/移动端相关技术' },
+  { name: 'Vue', color: '#e6b5b5', size: 4, parent: '前端/移动端相关技术' },
+  
+  // 运维与部署类的子分类
+  { name: 'DevOps', color: '#f9d2c7', size: 5, parent: '运维与部署类' },
+  { name: '服务器', color: '#f9d2c7', size: 5, parent: '运维与部署类' },
+  
+  // DevOps的子分类（三级分类）
+  { name: 'Docker', color: '#e6b5b5', size: 4, parent: 'DevOps' },
+  { name: 'Maven', color: '#e6b5b5', size: 4, parent: 'DevOps' },
+  { name: 'IDEA', color: '#e6b5b5', size: 4, parent: 'DevOps' },
+];
+
+// 随机生成更多连接节点
+const colors = ['#8bd3dd', '#f9d2c7', '#d1f0ee', '#e6b5b5', '#4cd4c0', '#f5a623'];
+const extraNodes = [];
+for (let i = 0; i < 15; i++) {
+  extraNodes.push({
+    name: '',  // 空名称，只显示节点
+    color: colors[Math.floor(Math.random() * colors.length)],
+    size: 3 + Math.random() * 2
+  });
+}
+
+const bubbles = [...categories, ...extraNodes];
+
+const container = document.getElementById('container');
+const tooltip = document.getElementById('tooltip');
+let camera, scene, renderer, controls, sphere, bubbleMeshes = [];
+
+// 初始化时通过DOMContentLoaded事件调用
+// init();
+// animate();
+
+function init() {
+  console.log("正在初始化场景...");
+  
+  // 检测是否为移动设备
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // 初始化性能监视器
+  perfMonitor = new PerformanceMonitor();
+  
+  // 初始化场景
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, isMobile ? 450 : 400); // 移动端稍微远一点
+
+  // 初始化渲染器
+  renderer = new THREE.WebGLRenderer({ 
+    antialias: !isMobile, // 移动端关闭抗锯齿提高性能
+    alpha: true
+  });
+  renderer.setClearColor(0x111122, 1); // 更深的背景色，接近黑色
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 2) : window.devicePixelRatio); // 限制移动端像素比
+  container.appendChild(renderer.domElement);
+
+  // 添加光源
+  const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(1, 1, 2);
+  scene.add(dirLight);
+  
+  // 添加点光源增强节点亮度
+  const pointLight = new THREE.PointLight(0xffffff, 0.8);
+  pointLight.position.set(0, 0, 200);
+  scene.add(pointLight);
+
+  // 不再创建中心星球，改为网络图谱风格
+  // 可以添加一些装饰性的粒子或线条
+  createParticles();
+  
+  // 添加在线人数显示
+  createOnlineCounter();
+
+  // 创建网络图谱节点
+  createBubbles();
+
+  // 初始化控制器
+  console.log("正在初始化控制器...");
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.enablePan = false;
+  controls.minDistance = isMobile ? 180 : 200;
+  controls.maxDistance = isMobile ? 500 : 600;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.3; // 更慢的旋转速度
+  controls.zoomSpeed = isMobile ? 0.6 : 1.0; // 移动端减慢缩放速度提高控制性
+
+  // 添加事件监听
+  window.addEventListener('resize', onWindowResize, false);
+  renderer.domElement.addEventListener('pointermove', onPointerMove);
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  
+  // 添加移动端特定的触摸事件
+  if (isMobile) {
+    document.getElementById('touch-instructions').style.opacity = 1;
+    
+    // 添加双指缩放检测
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+  }
+  
+  // 完成初始化后隐藏加载指示器
+  hideLoading();
+  
+  console.log("场景初始化完成");
+  
+  // 开始动画循环
+  animate();
+}
+
+function createBubbles() {
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  const N = bubbles.length;
+  for (let i = 0; i < N; i++) {
+    // 使用改进的分布算法，让节点更分散
+    const phi = Math.acos(1 - 2*(i+0.5)/N);
+    const theta = Math.PI * (1 + Math.sqrt(5)) * (i+0.5);
+    
+    // 根据用户数据调整节点大小和位置
+    const size = bubbles[i].size || 10;
+    const mobileScale = isMobile ? 0.7 : 1; // 移动端节点尺寸缩小
+    const r = 150 + Math.random() * 50; // 更大范围的分布，不再局限于球面
+    const x = r * Math.sin(phi) * Math.cos(theta);
+    const y = r * Math.cos(phi);
+    const z = r * Math.sin(phi) * Math.sin(theta);
+
+    // 创建气泡几何体，大小根据用户数据
+    let bubbleGeo;
+    
+    // 移动端使用较低分辨率的几何体提高性能
+    if (isMobile) {
+      bubbleGeo = new THREE.SphereGeometry(size * mobileScale, 16, 16);
+    } else {
+      bubbleGeo = new THREE.SphereGeometry(size, 32, 32);
+    }
+    
+    const bubbleMat = new THREE.MeshPhongMaterial({ 
+      color: bubbles[i].color, 
+      shininess: 80,
+      specular: 0x666666,
+      transparent: true,
+      opacity: 0.9
+    });
+    const mesh = new THREE.Mesh(bubbleGeo, bubbleMat);
+    mesh.position.set(x, y, z);
+    mesh.userData = { ...bubbles[i] };
+    scene.add(mesh);
+    bubbleMeshes.push(mesh);
+    
+    // 添加文字标签，移动端减少标签
+    if (bubbles[i].name && (!isMobile || bubbles[i].isMain)) {
+      createLabel(mesh, bubbles[i].name);
+    }
+  }
+}
+
+// 创建文本标签
+function createLabel(mesh, text) {
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // 创建2D画布
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  canvas.width = 1536;
+  canvas.height = 768;
+  
+  // 设置文本样式 - 移动端字体更小
+  const fontSize = isMobile ? 120 : 144;
+  context.font = `Bold ${fontSize}px Arial`;
+  context.fillStyle = 'white';
+  context.textAlign = 'center';
+  
+  // 测量文本长度，调整画布和裁剪区域
+  const metrics = context.measureText(text);
+  const textWidth = metrics.width;
+  
+  // 添加文字阴影效果提高可读性
+  context.shadowColor = 'rgba(0,0,0,0.5)';
+  context.shadowBlur = 5;
+  context.shadowOffsetX = 2;
+  context.shadowOffsetY = 2;
+  
+  context.fillText(text, 384, 192);
+  
+  // 创建纹理和精灵
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter; // 减少模糊
+  const spriteMaterial = new THREE.SpriteMaterial({ 
+    map: texture,
+    transparent: true,
+    opacity: 0.9
+  });
+  
+  const sprite = new THREE.Sprite(spriteMaterial);
+  const scale = mesh.userData.size ? mesh.userData.size * 0.75 : 9;
+  const mobileScale = isMobile ? 0.6 : 1; // 移动端标签尺寸缩小
+  sprite.scale.set(scale * 12 * mobileScale, scale * 6 * mobileScale, 1);
+  
+  // 设置标签位置，稍微偏移
+  const position = mesh.position.clone();
+  position.x += mesh.userData.size || 0;
+  position.y += mesh.userData.size || 0;
+  sprite.position.copy(position);
+  
+  scene.add(sprite);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onPointerMove(event) {
+  // 获取触摸或鼠标位置
+  const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
+  const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : 0);
+  
+  const mouse = new THREE.Vector2(
+    (clientX / window.innerWidth) * 2 - 1,
+    -(clientY / window.innerHeight) * 2 + 1
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  
+  // 检测交互
+  const intersects = raycaster.intersectObjects(bubbleMeshes);
+  
+  if (intersects.length > 0) {
+    const mesh = intersects[0].object;
+    if (mesh.userData && mesh.userData.name) {
+      // 显示提示
+      tooltip.style.display = 'block';
+      tooltip.innerHTML = mesh.userData.name;
+      tooltip.style.left = clientX + 'px';
+      tooltip.style.top = clientY + 'px';
+      
+      // 稍微放大被悬停的节点以提供视觉反馈
+      if (!mesh.userData.isHovered) {
+        mesh.userData.originalScale = mesh.scale.x;
+        mesh.scale.multiplyScalar(1.2);
+        mesh.userData.isHovered = true;
+      }
+    }
+  } else {
+    // 隐藏提示
+    tooltip.style.display = 'none';
+    
+    // 恢复所有节点的原始大小
+    for (let i = 0; i < bubbleMeshes.length; i++) {
+      const mesh = bubbleMeshes[i];
+      if (mesh.userData && mesh.userData.isHovered) {
+        mesh.scale.setScalar(mesh.userData.originalScale || 1);
+        mesh.userData.isHovered = false;
+      }
+    }
+  }
+}
+
+// 添加点击/触摸事件处理
+function onPointerDown(event) {
+  // 防止多次点击
+  if (event.isPrimary === false) return;
+  
+  // 关闭已打开的面板（点击其他区域时）
+  const infoPanel = document.getElementById('category-info');
+  if (infoPanel.style.display === 'block') {
+    // 检查点击是否在面板区域外
+    const rect = infoPanel.getBoundingClientRect();
+    const clickOutside = 
+      event.clientX < rect.left || 
+      event.clientX > rect.right || 
+      event.clientY < rect.top || 
+      event.clientY > rect.bottom;
+    
+    if (clickOutside) {
+      infoPanel.style.display = 'none';
+    }
+  }
+  
+  const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
+  const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : 0);
+  
+  const mouse = new THREE.Vector2(
+    (clientX / window.innerWidth) * 2 - 1,
+    -(clientY / window.innerHeight) * 2 + 1
+  );
+  
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  
+  const intersects = raycaster.intersectObjects(bubbleMeshes);
+  
+  if (intersects.length > 0) {
+    const mesh = intersects[0].object;
+    if (mesh.userData && mesh.userData.name) {
+      focusOnNode(mesh);
+      showCategoryInfo(mesh.userData.name);
+      
+      // 触摸设备上更新提示
+      if ('ontouchstart' in window) {
+        document.getElementById('touch-instructions').style.opacity = 0;
+      }
+    }
+  }
+}
+
+// 隐藏加载指示器函数
+function hideLoading() {
+  const loading = document.getElementById('loading');
+  loading.style.opacity = 0;
+  loading.style.transition = 'opacity 0.5s ease';
+  
+  setTimeout(() => {
+    loading.style.display = 'none';
+  }, 500);
+  
+  // 显示触摸指引
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+    const touchInstructions = document.getElementById('touch-instructions');
+    touchInstructions.style.opacity = 1;
+    
+    // 5秒后淡出
+    setTimeout(() => {
+      touchInstructions.style.opacity = 0.5;
+    }, 5000);
+  }
+}
+
+// 缓动函数，使动画更平滑
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// 聚焦到选中的节点
+function focusOnNode(mesh) {
+  // 计算新的相机位置
+  const nodePosition = mesh.position.clone();
+  const direction = nodePosition.clone().sub(camera.position).normalize();
+  const distance = mesh.userData.isMain ? 250 : 150; // 主分类距离远一些，子分类距离近一些
+  
+  // 设置新的相机目标
+  controls.target.copy(nodePosition);
+  
+  // 动画移动相机
+  const startPosition = camera.position.clone();
+  const endPosition = nodePosition.clone().sub(direction.multiplyScalar(distance));
+  
+  // 使用GSAP或自定义动画
+  animateCamera(startPosition, endPosition, 1000); // 1000毫秒动画时间
+  
+  // 暂时禁用自动旋转，让用户专注于选中的节点
+  const originalAutoRotate = controls.autoRotate;
+  controls.autoRotate = false;
+  
+  // 5秒后恢复自动旋转
+  setTimeout(() => {
+    controls.autoRotate = originalAutoRotate;
+  }, 5000);
+}
+
+// 相机动画
+function animateCamera(startPos, endPos, duration) {
+  const startTime = Date.now();
+  
+  function updateCamera() {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    
+    // 使用缓动函数使动画更平滑
+    const easeProgress = easeInOutCubic(progress);
+    
+    // 插值计算当前位置
+    camera.position.lerpVectors(startPos, endPos, easeProgress);
+    
+    if (progress < 1) {
+      requestAnimationFrame(updateCamera);
+    }
+  }
+  
+  updateCamera();
+}
+
+function resetView() {
+  controls.reset();
+}
+
+// 创建粒子系统作为背景
+function createParticles() {
+  // 移动端减少粒子数量，提高性能
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const particleCount = isMobile ? 100 : 200;
+  
+  const particles = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  
+  for (let i = 0; i < particleCount; i++) {
+    // 随机分布在更大的空间范围内
+    positions[i * 3] = (Math.random() - 0.5) * 800;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 800;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 800;
+  }
+  
+  particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  
+  const particleMaterial = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 2,
+    transparent: true,
+    opacity: 0.4
+  });
+  
+  const particleSystem = new THREE.Points(particles, particleMaterial);
+  scene.add(particleSystem);
+  
+  // 创建一些连接线
+  createConnections();
+}
+
+// 创建节点之间的连接线
+function createConnections() {
+  // 创建主分类之间的连接
+  const mainCategories = bubbles.filter(b => b.isMain);
+  for (let i = 0; i < mainCategories.length; i++) {
+    for (let j = i + 1; j < mainCategories.length; j++) {
+      if (bubbleMeshes[i] && bubbleMeshes[j]) {
+        createLine(bubbleMeshes[i].position, bubbleMeshes[j].position, 0x334455, 0.5);
+      }
+    }
+  }
+  
+  // 创建主分类与其子分类之间的连接
+  for (let i = 0; i < bubbles.length; i++) {
+    if (bubbles[i].parent) {
+      // 找到父分类的索引
+      const parentIndex = bubbles.findIndex(b => b.name === bubbles[i].parent);
+      if (parentIndex !== -1 && bubbleMeshes[i] && bubbleMeshes[parentIndex]) {
+        createLine(bubbleMeshes[i].position, bubbleMeshes[parentIndex].position, 0x4477aa, 0.7);
+      }
+    }
+  }
+  
+  // 创建一些随机连接，增加网络感
+  const namedNodes = bubbles.filter(b => b.name && !b.isMain);
+  for (let i = 0; i < namedNodes.length; i++) {
+    const nodeIndex = bubbles.indexOf(namedNodes[i]);
+    // 每个节点连接到1-2个其他节点
+    const connectionCount = 1 + Math.floor(Math.random() * 2);
+    
+    for (let j = 0; j < connectionCount; j++) {
+      // 随机选择另一个节点
+      const targetIndex = bubbles.indexOf(namedNodes[Math.floor(Math.random() * namedNodes.length)]);
+      if (targetIndex !== nodeIndex && bubbleMeshes[nodeIndex] && bubbleMeshes[targetIndex]) {
+        createLine(bubbleMeshes[nodeIndex].position, bubbleMeshes[targetIndex].position, 0x223344, 0.2);
+      }
+    }
+  }
+}
+
+// 创建连接线
+function createLine(pointA, pointB, color = 0x334455, opacity = 0.3) {
+  const lineGeometry = new THREE.BufferGeometry();
+  const positions = new Float32Array([pointA.x, pointA.y, pointA.z, pointB.x, pointB.y, pointB.z]);
+  lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: opacity
+  });
+  
+  const line = new THREE.Line(lineGeometry, lineMaterial);
+  scene.add(line);
+  return line;
+}
+
+// 创建在线人数显示
+function createOnlineCounter() {
+  // 使用HTML元素显示在线人数
+  const counterDiv = document.createElement('div');
+  counterDiv.style.position = 'fixed';
+  counterDiv.style.bottom = '30px';
+  counterDiv.style.width = '100%';
+  counterDiv.style.textAlign = 'center';
+  counterDiv.style.color = '#ffffff';
+  counterDiv.style.fontSize = '1.5em';
+  counterDiv.style.fontWeight = 'bold';
+  counterDiv.style.zIndex = '100';
+  counterDiv.innerHTML = '技术小馆内容预览图';
+  document.body.appendChild(counterDiv);
+  
+  // 创建分类信息面板
+  const infoPanel = document.createElement('div');
+  infoPanel.id = 'category-info';
+  infoPanel.style.position = 'fixed';
+  infoPanel.style.left = '30px';
+  infoPanel.style.top = '30px';
+  infoPanel.style.background = 'rgba(30,30,60,0.85)';
+  infoPanel.style.color = '#fff';
+  infoPanel.style.padding = '20px';
+  infoPanel.style.borderRadius = '10px';
+  infoPanel.style.maxWidth = '300px';
+  infoPanel.style.zIndex = '100';
+  infoPanel.style.display = 'none';
+  infoPanel.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
+  infoPanel.style.transition = 'all 0.3s ease';
+  document.body.appendChild(infoPanel);
+  
+  // 移动端调整底部提示
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+    counterDiv.style.fontSize = '1.1em';
+    counterDiv.style.bottom = '50px';
+  }
+}
+
+// 显示分类信息
+function showCategoryInfo(categoryName) {
+  const infoPanel = document.getElementById('category-info');
+  let content = '';
+  
+  // 根据分类名称显示对应的子分类
+  switch(categoryName) {
+    case '进阶提升类':
+      content = `
+        <h3>进阶提升类</h3>
+        <ul>
+          <li>程序员的AI方向【前沿技术】</li>
+          <li>源码分析【深度学习】</li>
+          <li>非技术方向【软实力提升】</li>
+        </ul>
+      `;
+      break;
+    case '求职与实战类':
+      content = `
+        <h3>求职与实战类</h3>
+        <ul>
+          <li>简历相关</li>
+          <li>项目公共模块【项目构建】</li>
+          <li>实战项目【经验积累】</li>
+          <li>大厂高频面试题【求职准备】</li>
+        </ul>
+      `;
+      break;
+    case '框架与中间件类':
+      content = `
+        <h3>框架与中间件类</h3>
+        <ul>
+          <li>SpringBoot【主流框架】</li>
+          <li>微服务【架构设计】</li>
+          <li>分布式【系统架构】</li>
+          <li>WebService【网络通信】</li>
+          <li>Nginx【Web服务器】</li>
+          <li>更多中间件...</li>
+        </ul>
+      `;
+      break;
+    case '程序员的AI方向':
+      content = `
+        <h3>程序员的AI方向</h3>
+        <ul>
+          <li>Cursor教程</li>
+          <li>实用的Prompt</li>
+          <li>AI基础理论</li>
+          <li>Java与AI</li>
+          <li>AI应用</li>
+          <li>前沿AI框架与效能工具</li>
+          <li>Deepseek</li>
+        </ul>
+      `;
+      break;
+    case '源码分析':
+      content = `
+        <h3>源码分析</h3>
+        <ul>
+          <li>Guava</li>
+          <li>Netty</li>
+          <li>消息队列</li>
+          <li>并发与多线程</li>
+          <li>Java集合</li>
+          <li>MyBatis</li>
+          <li>Spring</li>
+          <li>SpringBoot</li>
+        </ul>
+      `;
+      break;
+    default:
+      content = `<h3>${categoryName}</h3><p>点击查看详细内容</p>`;
+  }
+  
+  infoPanel.innerHTML = content;
+  infoPanel.style.display = 'block';
+  
+  // 添加关闭按钮
+  const closeBtn = document.createElement('div');
+  closeBtn.innerHTML = '×';
+  closeBtn.style.position = 'absolute';
+  closeBtn.style.right = '10px';
+  closeBtn.style.top = '10px';
+  closeBtn.style.cursor = 'pointer';
+  closeBtn.style.fontSize = '20px';
+  closeBtn.style.fontWeight = 'bold';
+  closeBtn.onclick = () => {
+    infoPanel.style.display = 'none';
+  };
+  infoPanel.appendChild(closeBtn);
+}
+
+// 添加双指触摸支持
+let touchStartDistance = 0;
+let touchStartScale = 1;
+let isMultiTouch = false;
+
+function handleTouchStart(event) {
+  if (event.touches.length >= 2) {
+    isMultiTouch = true;
+    
+    // 计算两指之间的距离
+    const dx = event.touches[0].clientX - event.touches[1].clientX;
+    const dy = event.touches[0].clientY - event.touches[1].clientY;
+    touchStartDistance = Math.sqrt(dx * dx + dy * dy);
+    
+    // 记录当前缩放级别
+    touchStartScale = camera.position.distanceTo(controls.target);
+    
+    // 禁用OrbitControls，避免冲突
+    controls.enabled = false;
+    
+    // 防止页面滚动
+    event.preventDefault();
+  } else {
+    isMultiTouch = false;
+    controls.enabled = true;
+  }
+}
+
+function handleTouchMove(event) {
+  if (isMultiTouch && event.touches.length >= 2) {
+    // 计算当前两指距离
+    const dx = event.touches[0].clientX - event.touches[1].clientX;
+    const dy = event.touches[0].clientY - event.touches[1].clientY;
+    const touchDistance = Math.sqrt(dx * dx + dy * dy);
+    
+    // 计算缩放比例
+    const scale = touchStartDistance / touchDistance;
+    
+    // 设置新的相机位置
+    const newDistance = touchStartScale * scale;
+    
+    // 确保缩放在最小和最大范围内
+    if (newDistance >= controls.minDistance && newDistance <= controls.maxDistance) {
+      const dir = camera.position.clone().sub(controls.target).normalize();
+      camera.position.copy(controls.target.clone().add(dir.multiplyScalar(newDistance)));
+    }
+    
+    // 防止页面滚动
+    event.preventDefault();
+  }
+}
+
+function handleTouchEnd(event) {
+  if (event.touches.length < 2) {
+    isMultiTouch = false;
+    controls.enabled = true;
+  }
+}
+
+// 修改为使用帧计数器而不是随机函数来控制移动端渲染频率
+let frameCount = 0;
+let perfMonitor;
+
+function animate() {
+  requestAnimationFrame(animate);
+  
+  // 性能优化 - 移动端降低更新频率，但保持连续性
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  frameCount++;
+  
+  // 更新性能监视器 (如果存在)
+  if (perfMonitor) perfMonitor.update();
+  
+  // 根据设备性能自适应渲染
+  if (!isMobile || frameCount % 2 === 0) { // 移动端每两帧渲染一次
+    controls.update();
+    renderer.render(scene, camera);
+  }
+}
+
+// 初始化时创建性能监视器
+window.addEventListener('DOMContentLoaded', () => {
+  // 初始化场景
+  init();
+  
+  // 给一点额外的时间加载资源
+  setTimeout(() => {
+    if (document.getElementById('loading')) {
+      hideLoading();
+    }
+  }, 1000);
+});
+
+// 添加页面卸载事件处理，防止内存泄漏
+function cleanUp() {
+  // 删除事件监听器
+  window.removeEventListener('resize', onWindowResize);
+  renderer.domElement.removeEventListener('pointermove', onPointerMove);
+  renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+  
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  if (isMobile) {
+    document.removeEventListener('touchstart', handleTouchStart);
+    document.removeEventListener('touchmove', handleTouchMove);
+    document.removeEventListener('touchend', handleTouchEnd);
+  }
+  
+  // 释放THREE.js资源
+  renderer.dispose();
+  
+  // 释放几何体和材质
+  for (let i = 0; i < bubbleMeshes.length; i++) {
+    bubbleMeshes[i].geometry.dispose();
+    bubbleMeshes[i].material.dispose();
+  }
+  
+  // 释放场景中的所有对象
+  function disposeNode(node) {
+    if (node.geometry) node.geometry.dispose();
+    if (node.material) {
+      if (Array.isArray(node.material)) {
+        node.material.forEach(material => material.dispose());
+      } else {
+        node.material.dispose();
+      }
+    }
+  }
+  
+  scene.traverse(disposeNode);
+  
+  scene = null;
+  camera = null;
+  controls = null;
+  bubbleMeshes = [];
+}
+
+// 监听页面卸载
+window.addEventListener('beforeunload', cleanUp);
+
+// 移动设备上，当页面进入后台时，暂停渲染以节省资源
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // 页面不可见时，暂停动画
+    controls.autoRotate = false;
+  } else {
+    // 页面可见时，恢复动画
+    controls.autoRotate = true;
+  }
+});
+</script>
+</body>
+</html>
