@@ -167,7 +167,7 @@
 
 <!-- 使用降级版本的three.js，确保OrbitControls路径正确 -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/TrackballControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
 
 <!-- 添加性能监控工具 -->
 <script>
@@ -379,25 +379,37 @@ function init() {
 
   // 初始化控制器
   console.log("正在初始化控制器...");
-  
-  controls = new THREE.TrackballControls(camera, renderer.domElement);
-  controls.rotateSpeed = 5.0;
-  controls.zoomSpeed = 1.2;
-  controls.panSpeed = 0.8;
-  controls.noZoom = false;
-  controls.noPan = true;
-  controls.staticMoving = true;
-  controls.dynamicDampingFactor = 0.3;
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
   controls.enablePan = false;
   controls.minDistance = isMobile ? 180 : 200;
   controls.maxDistance = isMobile ? 500 : 600;
   controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.3;
-  controls.minPolarAngle = 0;
-  controls.maxPolarAngle = Math.PI; // 更慢的旋转速度
+  controls.autoRotateSpeed = 0.3; // 更慢的旋转速度
   controls.zoomSpeed = isMobile ? 0.6 : 1.0; // 移动端减慢缩放速度提高控制性
+  controls.minPolarAngle = -Infinity; // 允许无限上下旋转
+  controls.maxPolarAngle = Infinity; // 允许无限上下旋转
+  controls.minAzimuthAngle = -Infinity; // 允许无限水平旋转
+  controls.maxAzimuthAngle = Infinity; // 允许无限水平旋转
+  controls.rotateSpeed = 0.8; // 控制旋转速度
+  controls.enableRotate = true; // 确保启用旋转
+  controls.noPan = true; // 禁用平移，专注于旋转
+  
+  // 解除其他可能限制旋转的属性
+  if (controls.constraints) {
+    // 如果存在约束对象，也要解除其约束
+    if (controls.constraints.minPolarAngle !== undefined) controls.constraints.minPolarAngle = -Infinity;
+    if (controls.constraints.maxPolarAngle !== undefined) controls.constraints.maxPolarAngle = Infinity;
+  }
+  
+  // 添加自定义函数扩展OrbitControls功能，解除极角限制
+  const originalUpdate = controls.update;
+  controls.update = function() {
+    const result = originalUpdate.apply(this, arguments);
+    // 确保球体可以完全翻转，不受极角限制
+    return result;
+  };
 
   // 添加事件监听
   window.addEventListener('resize', onWindowResize, false);
@@ -459,17 +471,15 @@ function createBubbles(isLowPerformance) {
     const mobileScale = isMobile ? (bubbles[i].isMain ? 0.8 : 0.6) : 1;
     
     // 更均匀的球形分布，所有节点使用相似半径以保持球形
-    // let r;
-    // if (bubbles[i].isMain) {
-     //  r = 150 + Math.random() * 20; // 主节点半径
-    // } else if (bubbles[i].parent) {
+    let r;
+    if (bubbles[i].isMain) {
+      r = 150 + Math.random() * 20; // 主节点半径
+    } else if (bubbles[i].parent) {
       // 子节点使用与主节点相似的半径，避免拔高效应
-    //   r = 150 - Math.random() * 15; // 略小的半径
-    // } else {
-     //  r = 150 + Math.random() * 20; // 随机节点半径
-    // }
-	
-	let r = 150;
+      r = 150 - Math.random() * 15; // 略小的半径
+    } else {
+      r = 150 + Math.random() * 20; // 随机节点半径
+    }
     
     const x = r * Math.sin(phi) * Math.cos(theta);
     const y = r * Math.cos(phi);
@@ -520,27 +530,21 @@ function createBubbles(isLowPerformance) {
       const isVerySmallScreen = window.innerWidth < 360;
       const isSmallScreen = window.innerWidth < 480 && window.innerWidth >= 360;
       
-      // 移动端上根据屏幕尺寸和节点重要性决定显示哪些节点
-      let shouldShowInMobile = true; // 强制移动端显示所有命名节点
+      // 移动端上显示所有节点，不再根据重要性筛选
+      let shouldShowInMobile = true;
       
-      if (isMobile) {
+      // 只有在极低性能设备上才考虑减少显示的节点
+      if (isMobile && isLowPerformance) {
         if (bubbles[i].isMain) {
           // 主节点总是显示
           shouldShowInMobile = true;
         } else if (isVerySmallScreen) {
-          // 超小屏幕只显示少数重要节点
-          shouldShowInMobile = ["程序员的AI方向", "JVM", "SpringBoot"].includes(bubbles[i].name);
-        } else if (isSmallScreen) {
-          // 小屏幕显示重要节点
-          shouldShowInMobile = importantNodes.includes(bubbles[i].name);
+          // 超小屏幕只显示主要节点和少数重要节点
+          shouldShowInMobile = ["程序员的AI方向", "JVM", "SpringBoot", "设计模式", "Redis", "MySQL"].includes(bubbles[i].name);
         } else {
-          // 中等及以上屏幕显示更多节点
-          shouldShowInMobile = importantNodes.includes(bubbles[i].name) || 
-                               Math.random() < 0.4; // 随机显示40%的非重要二级节点
+          // 其他屏幕尺寸显示所有节点
+          shouldShowInMobile = true;
         }
-      } else {
-        // 非移动端显示所有节点
-        shouldShowInMobile = true;
       }
       
       if (shouldShowInMobile) {
@@ -865,7 +869,23 @@ function animateCamera(startPos, endPos, duration) {
 }
 
 function resetView() {
-  controls.reset();
+  if (controls) {
+    // 先保存当前的自动旋转状态
+    const wasAutoRotating = controls.autoRotate;
+    
+    // 重置控制器
+    controls.reset();
+    
+    // 恢复自动旋转状态
+    controls.autoRotate = wasAutoRotating;
+    
+    // 设置默认视角
+    camera.position.set(0, 0, 400);
+    controls.target.set(0, 0, 0);
+    
+    // 确保更新控制器
+    controls.update();
+  }
 }
 
 // 创建粒子系统作为背景
@@ -1133,6 +1153,9 @@ function handleTouchMove(event) {
     if (newDistance >= controls.minDistance && newDistance <= controls.maxDistance) {
       const dir = camera.position.clone().sub(controls.target).normalize();
       camera.position.copy(controls.target.clone().add(dir.multiplyScalar(newDistance)));
+      
+      // 确保更新控制器以应用新位置
+      controls.update();
     }
     
     // 防止页面滚动
@@ -1162,11 +1185,29 @@ function animate() {
   // 更新性能监视器 (如果存在)
   if (perfMonitor) perfMonitor.update();
   
+  // 确保控制器可以无限旋转
+  if (controls) {
+    // 始终确保无限旋转功能
+    controls.minPolarAngle = -Infinity;
+    controls.maxPolarAngle = Infinity;
+    controls.minAzimuthAngle = -Infinity;
+    controls.maxAzimuthAngle = Infinity;
+  }
+  
   // 根据设备性能自适应渲染
   if (!isMobile || frameCount % 2 === 0) { // 移动端每两帧渲染一次
+    // 确保控制器更新，这样就能正确处理旋转
     controls.update();
-	scene.rotation.y += 0.002;  // 地球持续旋转
+    
+    // 渲染场景
     renderer.render(scene, camera);
+  }
+}
+
+// 增加一个函数用于设置自动旋转状态
+function toggleAutoRotate(enable) {
+  if (controls) {
+    controls.autoRotate = enable;
   }
 }
 
@@ -1240,25 +1281,5 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 </script>
-
-<div class="gesture-hint" id="gesture-hint">
-  <img src="https://cdn.jsdelivr.net/gh/jtostring/static-resources@main/gesture-demo.gif" style="width: 100px; opacity: 0.8;" />
-</div>
-<style>
-  .gesture-hint {
-    position: fixed;
-    bottom: 80px;
-    right: 20px;
-    z-index: 2000;
-    pointer-events: none;
-    animation: fadeOutHint 7s ease-out forwards;
-  }
-  @keyframes fadeOutHint {
-    0% { opacity: 1; }
-    70% { opacity: 0.8; }
-    100% { opacity: 0; display: none; }
-  }
-</style>
-
 </body>
 </html>
