@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>技术小馆 3D知识星球</title>
+  <title>技术小馆 · 3D知识星球</title>
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
     body { background: #23243a; overflow: hidden; }
@@ -334,6 +334,9 @@ function init() {
   // 检测是否为移动设备
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
+  // 检测浏览器性能
+  const isLowPerformance = checkLowPerformanceBrowser();
+  
   // 初始化性能监视器
   perfMonitor = new PerformanceMonitor();
   
@@ -372,7 +375,7 @@ function init() {
   createOnlineCounter();
 
   // 创建网络图谱节点
-  createBubbles();
+  createBubbles(isLowPerformance);
 
   // 初始化控制器
   console.log("正在初始化控制器...");
@@ -410,7 +413,27 @@ function init() {
   animate();
 }
 
-function createBubbles() {
+// 检测低性能浏览器
+function checkLowPerformanceBrowser() {
+  // 检查设备内存和处理器核心数
+  if (navigator.deviceMemory && navigator.deviceMemory < 4) {
+    return true;
+  }
+  
+  // 尝试检测硬件并发数
+  if (navigator.hardwareConcurrency && navigator.hardwareConcurrency < 4) {
+    return true;
+  }
+  
+  // 检查是否为低端移动设备
+  if (/Android [1-5]|iPhone OS [1-9]_|iPhone OS 10_/.test(navigator.userAgent)) {
+    return true;
+  }
+  
+  return false;
+}
+
+function createBubbles(isLowPerformance) {
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   const N = bubbles.length;
@@ -421,8 +444,27 @@ function createBubbles() {
     
     // 根据用户数据调整节点大小和位置
     const size = bubbles[i].size || 10;
-    const mobileScale = isMobile ? 0.7 : 1; // 移动端节点尺寸缩小
-    const r = 150 + Math.random() * 50; // 更大范围的分布，不再局限于球面
+    
+    // 移动端节点尺寸缩小，但主节点保持相对大小以更容易点击
+    const mobileScale = isMobile ? (bubbles[i].isMain ? 0.8 : 0.6) : 1;
+    
+    // 更大范围的分布，主要分类分布在球面外围，子分类分布更集中
+    let r;
+    if (bubbles[i].isMain) {
+      r = 150 + Math.random() * 30; // 主节点在外围
+    } else if (bubbles[i].parent) {
+      // 找到父节点
+      const parentIndex = bubbles.findIndex(b => b.name === bubbles[i].parent);
+      if (parentIndex !== -1 && bubbleMeshes[parentIndex]) {
+        // 二级节点在父节点周围分布，与父节点距离较近
+        r = 110 + Math.random() * 30;
+      } else {
+        r = 130 + Math.random() * 40;
+      }
+    } else {
+      r = 130 + Math.random() * 40; // 随机节点分布
+    }
+    
     const x = r * Math.sin(phi) * Math.cos(theta);
     const y = r * Math.cos(phi);
     const z = r * Math.sin(phi) * Math.sin(theta);
@@ -430,9 +472,13 @@ function createBubbles() {
     // 创建气泡几何体，大小根据用户数据
     let bubbleGeo;
     
-    // 移动端使用较低分辨率的几何体提高性能
+    // 移动端使用较低分辨率的几何体提高性能，低性能设备使用更低分辨率
     if (isMobile) {
-      bubbleGeo = new THREE.SphereGeometry(size * mobileScale, 16, 16);
+      if (isLowPerformance) {
+        bubbleGeo = new THREE.SphereGeometry(size * mobileScale, 8, 8); // 更低精度
+      } else {
+        bubbleGeo = new THREE.SphereGeometry(size * mobileScale, 16, 16);
+      }
     } else {
       bubbleGeo = new THREE.SphereGeometry(size, 32, 32);
     }
@@ -450,25 +496,59 @@ function createBubbles() {
     scene.add(mesh);
     bubbleMeshes.push(mesh);
     
-    // 添加文字标签，移动端减少标签
-    if (bubbles[i].name && (!isMobile || bubbles[i].isMain)) {
-      createLabel(mesh, bubbles[i].name);
+    // 添加文字标签，移动端也显示部分二级节点
+    if (bubbles[i].name) {
+      // 低性能设备只显示主节点
+      if (isLowPerformance && !bubbles[i].isMain) {
+        continue;
+      }
+      
+      // 移动端显示主节点和部分重要二级节点
+      const importantNodes = ["程序员的AI方向", "源码分析", "JVM", "设计模式", "Redis", 
+                            "MySQL", "Docker", "SpringBoot", "Nginx", "Spring", 
+                            "GIT", "非技术方向", "DevOps"];
+                            
+      // 移动端根据屏幕尺寸限制显示的节点数量
+      const isSmallScreen = window.innerWidth < 400;
+      const shouldShowInMobile = isMobile ? 
+        (bubbles[i].isMain || 
+         (!isSmallScreen && importantNodes.includes(bubbles[i].name))) : true;
+      
+      if (!isMobile || shouldShowInMobile) {
+        createLabel(mesh, bubbles[i].name, isLowPerformance);
+      }
     }
   }
 }
 
 // 创建文本标签
-function createLabel(mesh, text) {
+function createLabel(mesh, text, isLowPerformance) {
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   // 创建2D画布
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  canvas.width = 1536;
-  canvas.height = 768;
   
-  // 设置文本样式 - 移动端字体更小
-  const fontSize = isMobile ? 120 : 144;
+  // 低性能设备使用更小的画布
+  if (isLowPerformance) {
+    canvas.width = 768;
+    canvas.height = 384;
+  } else {
+    canvas.width = 1536;
+    canvas.height = 768;
+  }
+  
+  // 设置文本样式 - 移动端字体更小，二级节点字体更小
+  let fontSize;
+  if (isMobile) {
+    fontSize = mesh.userData.isMain ? 120 : 80; // 移动端二级节点字体更小
+    if (isLowPerformance) {
+      fontSize = mesh.userData.isMain ? 80 : 60; // 低性能设备更小字体
+    }
+  } else {
+    fontSize = mesh.userData.isMain ? 144 : 120;
+  }
+  
   context.font = `Bold ${fontSize}px Arial`;
   context.fillStyle = 'white';
   context.textAlign = 'center';
@@ -487,7 +567,7 @@ function createLabel(mesh, text) {
   }
   
   // 添加文字阴影效果提高可读性
-  context.shadowColor = 'rgba(0,0,0,0.5)';
+  context.shadowColor = 'rgba(0,0,0,0.6)';
   context.shadowBlur = 5;
   context.shadowOffsetX = 2;
   context.shadowOffsetY = 2;
@@ -497,33 +577,91 @@ function createLabel(mesh, text) {
   context.fillStyle = 'white';
   context.textAlign = 'center';
   
+  // 添加背景提高文字可读性
+  const textHeight = fontSize;
+  const bgPadding = 10;
+  const bgX = canvas.width / 2 - textWidth / 2 - bgPadding;
+  const bgY = 192 - textHeight + bgPadding;
+  const bgWidth = textWidth + bgPadding * 2;
+  const bgHeight = textHeight + bgPadding;
+  
+  // 绘制半透明背景
+  context.fillStyle = 'rgba(0,0,0,0.3)';
+  context.roundRect(bgX, bgY, bgWidth, bgHeight, 5);
+  context.fill();
+  
   // 文字绘制在画布中心
+  context.fillStyle = 'white';
   context.fillText(text, canvas.width / 2, 192);
   
   // 创建纹理和精灵
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter; // 减少模糊
+  texture.anisotropy = 4; // 提高文字清晰度
+  
   const spriteMaterial = new THREE.SpriteMaterial({ 
     map: texture,
     transparent: true,
-    opacity: 0.9
+    opacity: 0.95
   });
   
   const sprite = new THREE.Sprite(spriteMaterial);
   const scale = mesh.userData.size ? mesh.userData.size * 0.75 : 9;
-  const mobileScale = isMobile ? 0.6 : 1; // 移动端标签尺寸缩小
+  
+  // 移动端缩放调整 - 二级节点更小以避免重叠
+  let mobileScale;
+  if (isMobile) {
+    mobileScale = mesh.userData.isMain ? 0.65 : 0.4; // 二级节点更小
+    if (isLowPerformance) {
+      mobileScale = mesh.userData.isMain ? 0.5 : 0.35; // 低性能设备更小
+    }
+  } else {
+    mobileScale = 1;
+  }
   
   // 根据实际画布比例调整精灵大小
   const aspectRatio = canvas.width / canvas.height;
   sprite.scale.set(scale * 12 * mobileScale * aspectRatio, scale * 6 * mobileScale, 1);
   
-  // 设置标签位置，稍微偏移
+  // 设置标签位置，稍微偏移 - 二级节点偏移更大以避免重叠
   const position = mesh.position.clone();
-  position.x += mesh.userData.size || 0;
-  position.y += mesh.userData.size || 0;
-  sprite.position.copy(position);
+  if (mesh.userData.isMain) {
+    position.x += mesh.userData.size || 0;
+    position.y += mesh.userData.size || 0;
+  } else {
+    // 二级节点标签偏移更大，避免重叠
+    // 在3D空间中随机偏移位置，避免标签重叠
+    const offsetX = (mesh.userData.size || 0) * 1.2;
+    const offsetY = (mesh.userData.size || 0) * 1.2;
+    
+    position.x += offsetX + Math.random() * 2;
+    position.y += offsetY + Math.random() * 2;
+    position.z += Math.random() * 2;
+  }
   
+  sprite.position.copy(position);
   scene.add(sprite);
+}
+
+// 为Canvas 2D context添加roundRect方法（如果浏览器不支持）
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, width, height, radius) {
+    if (typeof radius === 'undefined') {
+      radius = 5;
+    }
+    this.beginPath();
+    this.moveTo(x + radius, y);
+    this.lineTo(x + width - radius, y);
+    this.quadraticCurveTo(x + width, y, x + width, y + radius);
+    this.lineTo(x + width, y + height - radius);
+    this.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    this.lineTo(x + radius, y + height);
+    this.quadraticCurveTo(x, y + height, x, y + height - radius);
+    this.lineTo(x, y + radius);
+    this.quadraticCurveTo(x, y, x + radius, y);
+    this.closePath();
+    return this;
+  };
 }
 
 function onWindowResize() {
