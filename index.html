@@ -167,7 +167,7 @@
 
 <!-- 使用降级版本的three.js，确保OrbitControls路径正确 -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/TrackballControls.js"></script>
 
 <!-- 添加性能监控工具 -->
 <script>
@@ -379,14 +379,24 @@ function init() {
 
   // 初始化控制器
   console.log("正在初始化控制器...");
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  
+  controls = new THREE.TrackballControls(camera, renderer.domElement);
+  controls.rotateSpeed = 5.0;
+  controls.zoomSpeed = 1.2;
+  controls.panSpeed = 0.8;
+  controls.noZoom = false;
+  controls.noPan = true;
+  controls.staticMoving = true;
+  controls.dynamicDampingFactor = 0.3;
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
   controls.enablePan = false;
   controls.minDistance = isMobile ? 180 : 200;
   controls.maxDistance = isMobile ? 500 : 600;
   controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.3; // 更慢的旋转速度
+  controls.autoRotateSpeed = 0.3;
+  controls.minPolarAngle = 0;
+  controls.maxPolarAngle = Math.PI; // 更慢的旋转速度
   controls.zoomSpeed = isMobile ? 0.6 : 1.0; // 移动端减慢缩放速度提高控制性
 
   // 添加事件监听
@@ -449,15 +459,17 @@ function createBubbles(isLowPerformance) {
     const mobileScale = isMobile ? (bubbles[i].isMain ? 0.8 : 0.6) : 1;
     
     // 更均匀的球形分布，所有节点使用相似半径以保持球形
-    let r;
-    if (bubbles[i].isMain) {
-      r = 150 + Math.random() * 20; // 主节点半径
-    } else if (bubbles[i].parent) {
+    // let r;
+    // if (bubbles[i].isMain) {
+     //  r = 150 + Math.random() * 20; // 主节点半径
+    // } else if (bubbles[i].parent) {
       // 子节点使用与主节点相似的半径，避免拔高效应
-      r = 150 - Math.random() * 15; // 略小的半径
-    } else {
-      r = 150 + Math.random() * 20; // 随机节点半径
-    }
+    //   r = 150 - Math.random() * 15; // 略小的半径
+    // } else {
+     //  r = 150 + Math.random() * 20; // 随机节点半径
+    // }
+	
+	let r = 150;
     
     const x = r * Math.sin(phi) * Math.cos(theta);
     const y = r * Math.cos(phi);
@@ -509,7 +521,7 @@ function createBubbles(isLowPerformance) {
       const isSmallScreen = window.innerWidth < 480 && window.innerWidth >= 360;
       
       // 移动端上根据屏幕尺寸和节点重要性决定显示哪些节点
-      let shouldShowInMobile = false;
+      let shouldShowInMobile = true; // 强制移动端显示所有命名节点
       
       if (isMobile) {
         if (bubbles[i].isMain) {
@@ -1153,6 +1165,7 @@ function animate() {
   // 根据设备性能自适应渲染
   if (!isMobile || frameCount % 2 === 0) { // 移动端每两帧渲染一次
     controls.update();
+	scene.rotation.y += 0.002;  // 地球持续旋转
     renderer.render(scene, camera);
   }
 }
@@ -1227,5 +1240,25 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 </script>
+
+<div class="gesture-hint" id="gesture-hint">
+  <img src="https://cdn.jsdelivr.net/gh/jtostring/static-resources@main/gesture-demo.gif" style="width: 100px; opacity: 0.8;" />
+</div>
+<style>
+  .gesture-hint {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    z-index: 2000;
+    pointer-events: none;
+    animation: fadeOutHint 7s ease-out forwards;
+  }
+  @keyframes fadeOutHint {
+    0% { opacity: 1; }
+    70% { opacity: 0.8; }
+    100% { opacity: 0; display: none; }
+  }
+</style>
+
 </body>
 </html>
