@@ -448,21 +448,15 @@ function createBubbles(isLowPerformance) {
     // 移动端节点尺寸缩小，但主节点保持相对大小以更容易点击
     const mobileScale = isMobile ? (bubbles[i].isMain ? 0.8 : 0.6) : 1;
     
-    // 更大范围的分布，主要分类分布在球面外围，子分类分布更集中
+    // 更均匀的球形分布，所有节点使用相似半径以保持球形
     let r;
     if (bubbles[i].isMain) {
-      r = 150 + Math.random() * 30; // 主节点在外围
+      r = 150 + Math.random() * 20; // 主节点半径
     } else if (bubbles[i].parent) {
-      // 找到父节点
-      const parentIndex = bubbles.findIndex(b => b.name === bubbles[i].parent);
-      if (parentIndex !== -1 && bubbleMeshes[parentIndex]) {
-        // 二级节点在父节点周围分布，与父节点距离较近
-        r = 110 + Math.random() * 30;
-      } else {
-        r = 130 + Math.random() * 40;
-      }
+      // 子节点使用与主节点相似的半径，避免拔高效应
+      r = 150 - Math.random() * 15; // 略小的半径
     } else {
-      r = 130 + Math.random() * 40; // 随机节点分布
+      r = 150 + Math.random() * 20; // 随机节点半径
     }
     
     const x = r * Math.sin(phi) * Math.cos(theta);
@@ -496,32 +490,55 @@ function createBubbles(isLowPerformance) {
     scene.add(mesh);
     bubbleMeshes.push(mesh);
     
-    // 添加文字标签，移动端也显示部分二级节点
+    // 添加文字标签，确保移动端显示二级节点
     if (bubbles[i].name) {
       // 低性能设备只显示主节点
       if (isLowPerformance && !bubbles[i].isMain) {
         continue;
       }
       
-      // 移动端显示主节点和部分重要二级节点
-      const importantNodes = ["程序员的AI方向", "源码分析", "JVM", "设计模式", "Redis", 
-                            "MySQL", "Docker", "SpringBoot", "Nginx", "Spring", 
-                            "GIT", "非技术方向", "DevOps"];
-                            
-      // 移动端根据屏幕尺寸限制显示的节点数量
-      const isSmallScreen = window.innerWidth < 400;
-      const shouldShowInMobile = isMobile ? 
-        (bubbles[i].isMain || 
-         (!isSmallScreen && importantNodes.includes(bubbles[i].name))) : true;
+      // 定义重要节点列表，确保这些节点在移动端显示
+      const importantNodes = [
+        "程序员的AI方向", "源码分析", "JVM", "设计模式", "Redis", 
+        "MySQL", "Docker", "SpringBoot", "Nginx", "Spring", 
+        "GIT", "非技术方向", "DevOps", "AI编程指南", "锁"
+      ];
       
-      if (!isMobile || shouldShowInMobile) {
+      // 检查屏幕尺寸
+      const isVerySmallScreen = window.innerWidth < 360;
+      const isSmallScreen = window.innerWidth < 480 && window.innerWidth >= 360;
+      
+      // 移动端上根据屏幕尺寸和节点重要性决定显示哪些节点
+      let shouldShowInMobile = false;
+      
+      if (isMobile) {
+        if (bubbles[i].isMain) {
+          // 主节点总是显示
+          shouldShowInMobile = true;
+        } else if (isVerySmallScreen) {
+          // 超小屏幕只显示少数重要节点
+          shouldShowInMobile = ["程序员的AI方向", "JVM", "SpringBoot"].includes(bubbles[i].name);
+        } else if (isSmallScreen) {
+          // 小屏幕显示重要节点
+          shouldShowInMobile = importantNodes.includes(bubbles[i].name);
+        } else {
+          // 中等及以上屏幕显示更多节点
+          shouldShowInMobile = importantNodes.includes(bubbles[i].name) || 
+                               Math.random() < 0.4; // 随机显示40%的非重要二级节点
+        }
+      } else {
+        // 非移动端显示所有节点
+        shouldShowInMobile = true;
+      }
+      
+      if (shouldShowInMobile) {
         createLabel(mesh, bubbles[i].name, isLowPerformance);
       }
     }
   }
 }
 
-// 创建文本标签
+// 优化标签创建函数，解决标签显示问题
 function createLabel(mesh, text, isLowPerformance) {
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
@@ -541,12 +558,12 @@ function createLabel(mesh, text, isLowPerformance) {
   // 设置文本样式 - 移动端字体更小，二级节点字体更小
   let fontSize;
   if (isMobile) {
-    fontSize = mesh.userData.isMain ? 120 : 80; // 移动端二级节点字体更小
+    fontSize = mesh.userData.isMain ? 100 : 70; // 移动端字体更小
     if (isLowPerformance) {
       fontSize = mesh.userData.isMain ? 80 : 60; // 低性能设备更小字体
     }
   } else {
-    fontSize = mesh.userData.isMain ? 144 : 120;
+    fontSize = mesh.userData.isMain ? 144 : 110;
   }
   
   context.font = `Bold ${fontSize}px Arial`;
@@ -567,8 +584,8 @@ function createLabel(mesh, text, isLowPerformance) {
   }
   
   // 添加文字阴影效果提高可读性
-  context.shadowColor = 'rgba(0,0,0,0.6)';
-  context.shadowBlur = 5;
+  context.shadowColor = 'rgba(0,0,0,0.7)';
+  context.shadowBlur = 6;
   context.shadowOffsetX = 2;
   context.shadowOffsetY = 2;
   
@@ -579,15 +596,15 @@ function createLabel(mesh, text, isLowPerformance) {
   
   // 添加背景提高文字可读性
   const textHeight = fontSize;
-  const bgPadding = 10;
+  const bgPadding = 12;
   const bgX = canvas.width / 2 - textWidth / 2 - bgPadding;
   const bgY = 192 - textHeight + bgPadding;
   const bgWidth = textWidth + bgPadding * 2;
   const bgHeight = textHeight + bgPadding;
   
-  // 绘制半透明背景
-  context.fillStyle = 'rgba(0,0,0,0.3)';
-  context.roundRect(bgX, bgY, bgWidth, bgHeight, 5);
+  // 绘制半透明背景，更暗以提高对比度
+  context.fillStyle = 'rgba(0,0,0,0.5)';
+  context.roundRect(bgX, bgY, bgWidth, bgHeight, 8);
   context.fill();
   
   // 文字绘制在画布中心
@@ -608,12 +625,13 @@ function createLabel(mesh, text, isLowPerformance) {
   const sprite = new THREE.Sprite(spriteMaterial);
   const scale = mesh.userData.size ? mesh.userData.size * 0.75 : 9;
   
-  // 移动端缩放调整 - 二级节点更小以避免重叠
+  // 移动端缩放调整
   let mobileScale;
   if (isMobile) {
-    mobileScale = mesh.userData.isMain ? 0.65 : 0.4; // 二级节点更小
+    // 不再区分主节点和二级节点的缩放比例，使用更一致的缩放
+    mobileScale = 0.5;
     if (isLowPerformance) {
-      mobileScale = mesh.userData.isMain ? 0.5 : 0.35; // 低性能设备更小
+      mobileScale = 0.4;
     }
   } else {
     mobileScale = 1;
@@ -623,21 +641,15 @@ function createLabel(mesh, text, isLowPerformance) {
   const aspectRatio = canvas.width / canvas.height;
   sprite.scale.set(scale * 12 * mobileScale * aspectRatio, scale * 6 * mobileScale, 1);
   
-  // 设置标签位置，稍微偏移 - 二级节点偏移更大以避免重叠
+  // 设置标签位置 - 使用更合理的偏移量
   const position = mesh.position.clone();
-  if (mesh.userData.isMain) {
-    position.x += mesh.userData.size || 0;
-    position.y += mesh.userData.size || 0;
-  } else {
-    // 二级节点标签偏移更大，避免重叠
-    // 在3D空间中随机偏移位置，避免标签重叠
-    const offsetX = (mesh.userData.size || 0) * 1.2;
-    const offsetY = (mesh.userData.size || 0) * 1.2;
-    
-    position.x += offsetX + Math.random() * 2;
-    position.y += offsetY + Math.random() * 2;
-    position.z += Math.random() * 2;
-  }
+  
+  // 计算到中心的向量，用于将标签沿着球面法线方向放置
+  const directionToCenter = position.clone().normalize();
+  
+  // 所有节点都使用相同的标签放置逻辑，沿着球面法线方向偏移
+  const labelOffset = mesh.userData.isMain ? 10 : 8;
+  position.add(directionToCenter.multiplyScalar(labelOffset));
   
   sprite.position.copy(position);
   scene.add(sprite);
