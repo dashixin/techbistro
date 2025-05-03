@@ -576,10 +576,10 @@
       // 根据设备类型调整相机位置
       let cameraY, cameraZ;
       if (isSmallPhone) {
-        cameraY = 80;
-        cameraZ = 520;
+        cameraY = 50;  // 降低摄像机高度，使视角更加平行
+        cameraZ = 480;  // 稍微调整距离
       } else if (isTablet) {
-        cameraY = 100;
+        cameraY = 80;
         cameraZ = 500;
       } else if (isHighResolution) {
         cameraY = 120;
@@ -640,7 +640,7 @@
 
       // 根据设备调整缩放范围
       if (isSmallPhone) {
-        controls.minDistance = 350;
+        controls.minDistance = 330;  // 允许更近的查看距离
         controls.maxDistance = 650;
       } else if (isTablet) {
         controls.minDistance = 380;
@@ -732,7 +732,7 @@
 
       if (isSmallPhone) {
         UNIFORM_SIZE = 5;  // 小屏幕手机星球略小
-        UNIFORM_SPHERE_RADIUS = 140;  // 小屏幕手机分布半径略小
+        UNIFORM_SPHERE_RADIUS = 120;  // 小屏幕手机分布半径更小，以便标签更加分散
       } else if (isTablet) {
         UNIFORM_SIZE = 6;
         UNIFORM_SPHERE_RADIUS = 150;
@@ -741,21 +741,62 @@
         UNIFORM_SPHERE_RADIUS = 150;  // 正常分布半径
       }
 
-      // 球形分布，无扁平化
-      const FLATTEN_FACTOR = 1.0;
+      // 球形分布，移动端适当扁平化以便更好地显示标签
+      const FLATTEN_FACTOR = isMobile ? 0.9 : 1.0;
+
+      // 创建已使用位置的缓存，避免重叠（特别是对于移动设备）
+      const usedPositions = [];
+      const minDistanceBetweenNodes = isSmallPhone ? 25 : 20;
 
       for (let i = 0; i < N; i++) {
         // 使用斐波那契球体分布算法，让节点更均匀分布在球面上
-        const phi = Math.acos(1 - 2 * (i + 0.5) / N);
-        const theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5);
+        let phi = Math.acos(1 - 2 * (i + 0.5) / N);
+        let theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5);
+
+        // 对于移动设备和小屏幕，增加随机偏移以使分布更加疏散
+        if (isMobile && bubbles[i].name) {
+          phi += (Math.random() - 0.5) * 0.2;
+          theta += (Math.random() - 0.5) * 0.2;
+        }
 
         // 统一半径，确保球体整体更圆
         let r = UNIFORM_SPHERE_RADIUS;
 
         // 计算位置坐标 - 应用扁平化系数到Y轴
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.cos(phi) * FLATTEN_FACTOR;
-        const z = r * Math.sin(phi) * Math.sin(theta);
+        let x = r * Math.sin(phi) * Math.cos(theta);
+        let y = r * Math.cos(phi) * FLATTEN_FACTOR;
+        let z = r * Math.sin(phi) * Math.sin(theta);
+
+        // 检查位置是否与已有节点太近（仅对命名节点进行检查，以减少计算）
+        if (bubbles[i].name && isMobile) {
+          const position = new THREE.Vector3(x, y, z);
+          let tooClose = false;
+
+          for (const usedPos of usedPositions) {
+            if (position.distanceTo(usedPos) < minDistanceBetweenNodes) {
+              tooClose = true;
+              break;
+            }
+          }
+
+          // 如果太近，尝试调整位置
+          if (tooClose) {
+            // 偏移位置
+            const offset = isSmallPhone ? 30 : 20;
+            const offsetX = (Math.random() - 0.5) * offset;
+            const offsetY = (Math.random() - 0.5) * offset;
+            const offsetZ = (Math.random() - 0.5) * offset;
+
+            // 更新坐标
+            x += offsetX;
+            y += offsetY;
+            z += offsetZ;
+
+            usedPositions.push(new THREE.Vector3(x, y, z));
+          } else {
+            usedPositions.push(position);
+          }
+        }
 
         // 创建气泡几何体，根据设备调整精度
         let bubbleGeo;
@@ -790,6 +831,12 @@
         scene.add(mesh);
         bubbleMeshes.push(mesh);
 
+        // 在小屏手机上，减小星球大小以便标签有更多空间
+        if (isSmallPhone && bubbles[i].name) {
+          const scaleFactor = bubbles[i].isMain ? 0.85 : 0.75;
+          mesh.scale.set(scaleFactor, scaleFactor, scaleFactor);
+        }
+
         // 为主节点添加发光效果（高性能设备）
         if (bubbles[i].isMain && !isLowPerformance) {
           const glowGeo = new THREE.SphereGeometry(nodeSize * 1.25, segments, segments);
@@ -809,9 +856,43 @@
           if (isLowPerformance && !bubbles[i].isMain) {
             continue;
           }
-          // 在小屏幕手机上，减少标签数量
-          if (isSmallPhone && !bubbles[i].isMain && Math.random() > 0.6) {
-            continue;
+
+          // 移动端标签显示策略调整
+          if (isMobile) {
+            // 在小屏幕手机上，减少更多标签数量
+            if (isSmallPhone) {
+              // 仅显示主节点和30%的子节点
+              if (!bubbles[i].isMain && Math.random() > 0.3) {
+                continue;
+              }
+            } else {
+              // 平板上显示主节点和50%的子节点
+              if (!bubbles[i].isMain && Math.random() > 0.5) {
+                continue;
+              }
+            }
+
+            // 如果周围已有太多标签，不显示此标签
+            if (!bubbles[i].isMain) {
+              let nearbyLabels = 0;
+              const checkRadius = isSmallPhone ? 35 : 30;
+
+              for (const pos of usedPositions) {
+                if (new THREE.Vector3(x, y, z).distanceTo(pos) < checkRadius) {
+                  nearbyLabels++;
+                }
+              }
+
+              // 如果周围标签过多，则不显示此标签
+              if (nearbyLabels > 2) {
+                continue;
+              }
+            }
+          } else {
+            // 桌面端正常显示
+            if (isLowPerformance && !bubbles[i].isMain && Math.random() > 0.7) {
+              continue;
+            }
           }
 
           // 为节点创建标签
@@ -899,6 +980,40 @@
         context.fillStyle = 'rgba(255, 255, 255, 0.9)';
       }
 
+      // 在移动端为标签添加半透明背景，提高对比度
+      if (isMobile) {
+        // 测量文本宽度
+        const textWidth = context.measureText(text).width;
+        const bgPadding = isSmallPhone ? 15 : 20;
+        const textHeight = fontSize;
+
+        // 设置背景
+        const bgX = centerX - textWidth / 2 - bgPadding;
+        const bgY = centerY - textHeight / 2 - bgPadding / 2;
+        const bgWidth = textWidth + bgPadding * 2;
+        const bgHeight = textHeight + bgPadding;
+
+        // 绘制圆角矩形背景
+        context.save();
+        context.fillStyle = 'rgba(20, 25, 45, 0.75)';
+        context.roundRect(bgX, bgY, bgWidth, bgHeight, bgPadding / 2);
+        context.fill();
+
+        // 添加边框
+        context.strokeStyle = 'rgba(120, 140, 180, 0.5)';
+        context.lineWidth = isSmallPhone ? 2 : 3;
+        context.roundRect(bgX, bgY, bgWidth, bgHeight, bgPadding / 2);
+        context.stroke();
+        context.restore();
+
+        // 重设文字颜色和阴影
+        context.fillStyle = '#ffffff';
+        context.shadowColor = 'rgba(0, 0, 0, 0.9)';
+        context.shadowBlur = isSmallPhone ? 5 : 8;
+        context.shadowOffsetX = 1;
+        context.shadowOffsetY = 1;
+      }
+
       // 应用字间距
       if (letterSpacing !== "0px" && !isLowPerformance) {
         let x = centerX - (context.measureText(text).width / 2);
@@ -945,9 +1060,17 @@
 
       sprite.scale.set(spriteScale, spriteScale * canvas.height / canvas.width, 1);
 
-      // 保持与坐标系一致
+      // 移动端给标签增加更远的偏移
+      let labelDistanceFactor;
+      if (isMobile) {
+        labelDistanceFactor = isSmallPhone ? 3.5 : 3.0; // 移动端需要更远的距离
+      } else {
+        labelDistanceFactor = 2.2; // 桌面端标准偏移
+      }
+
+      // 计算标签位置，根据设备类型调整偏移距离
       const labelPos = new THREE.Vector3().copy(mesh.position);
-      const labelDistance = mesh.geometry.parameters.radius * 1.8;
+      const labelDistance = mesh.geometry.parameters.radius * labelDistanceFactor;
 
       // 计算标签位置，略微偏移以避免直接重叠
       labelPos.normalize().multiplyScalar(labelDistance);
@@ -1624,6 +1747,47 @@
     let frameCount = 0;
     let perfMonitor;
 
+    // 动态调整标签可见性
+    function updateLabelsVisibility() {
+      // 仅在移动设备上应用标签可见性控制
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (!isMobile) return;
+
+      // 获取相机视角方向
+      const cameraDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+
+      // 遍历所有气泡
+      bubbleMeshes.forEach(mesh => {
+        // 如果有关联标签
+        if (mesh.userData.label) {
+          const sprite = mesh.userData.label;
+
+          // 计算节点方向与相机方向的夹角
+          const nodeDir = mesh.position.clone().normalize();
+          const dotProduct = nodeDir.dot(cameraDir);
+
+          // 确定是否在视角前方（视场内）
+          // dotProduct越接近1，表示越接近相机视线中心
+          if (dotProduct > 0.2) { // 视场范围内
+            // 计算根据角度的透明度
+            const opacityFactor = Math.pow((dotProduct + 0.2) / 1.2, 2) * 0.6 + 0.4;
+            sprite.material.opacity = Math.min(0.95, opacityFactor);
+            sprite.visible = true;
+          } else {
+            // 在视场外时，标签逐渐透明
+            if (dotProduct > -0.3) { // 边缘区域
+              sprite.material.opacity = (dotProduct + 0.3) / 0.5 * 0.3;
+              sprite.visible = sprite.material.opacity > 0.05;
+            } else {
+              // 背向相机区域，完全隐藏
+              sprite.visible = false;
+            }
+          }
+        }
+      });
+    }
+
+    // 在动画循环中调用标签可见性更新函数
     function animate() {
       requestAnimationFrame(animate);
 
@@ -1656,6 +1820,9 @@
             mesh.scale.set(scale, scale, scale);
           }
         });
+
+        // 更新标签可见性 - 选择性显示标签
+        updateLabelsVisibility();
 
         // 更新标签大小，使其根据视角调整
         updateLabelsScale();
