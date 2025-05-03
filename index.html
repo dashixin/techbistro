@@ -150,7 +150,7 @@
       animation: fadeIn 0.3s ease-out;
     }
 
-    /* 移动端适配样式 */
+    /* 响应式布局 - 更完善的断点设计 */
     @media (max-width: 768px) {
       .tooltip {
         font-size: 0.9em;
@@ -194,6 +194,66 @@
         max-width: 85% !important;
         font-size: 0.9em;
         top: 60px;
+      }
+    }
+
+    /* 小屏幕手机适配 */
+    @media (max-width: 480px) {
+      .reset-btn {
+        right: 10px;
+        top: 10px;
+        padding: 5px 10px;
+        font-size: 0.75em;
+      }
+
+      .article-btn {
+        right: 10px;
+        top: 45px;
+        padding: 5px 10px;
+        font-size: 0.75em;
+        max-width: 100px;
+      }
+
+      .touch-instructions {
+        font-size: 0.7em;
+        bottom: 10px;
+      }
+    }
+
+    /* 平板设备横屏适配 */
+    @media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) {
+      .reset-btn {
+        right: 25px;
+        top: 25px;
+      }
+
+      .article-btn {
+        right: 25px;
+        top: 75px;
+      }
+    }
+
+    /* 高分辨率设备适配 */
+    @media (min-width: 1600px) {
+
+      .reset-btn,
+      .article-btn {
+        padding: 10px 20px;
+        font-size: 1.1em;
+      }
+
+      .reset-btn {
+        right: 30px;
+        top: 30px;
+      }
+
+      .article-btn {
+        right: 30px;
+        top: 85px;
+      }
+
+      .touch-instructions {
+        font-size: 1em;
       }
     }
 
@@ -255,40 +315,122 @@
     // 性能监控函数
     class PerformanceMonitor {
       constructor() {
-        this.fpsCounter = document.createElement('div');
-        this.fpsCounter.style.position = 'fixed';
-        this.fpsCounter.style.left = '10px';
-        this.fpsCounter.style.bottom = '10px';
-        this.fpsCounter.style.color = 'rgba(255,255,255,0.5)';
-        this.fpsCounter.style.fontSize = '10px';
-        this.fpsCounter.style.fontFamily = 'monospace';
-        this.fpsCounter.style.zIndex = '1000';
-        this.fpsCounter.style.display = 'none'; // 默认隐藏
-        document.body.appendChild(this.fpsCounter);
-
-        this.frames = 0;
+        this.isMonitoring = true;
+        this.fpsArray = [];
+        this.fpsAverage = 60;
+        this.lowPerformanceThreshold = 40;
         this.lastTime = performance.now();
-        this.fps = 0;
+        this.frames = 0;
+        this.timeElapsed = 0;
+        this.checkInterval = 3000; // 3秒检查一次
+        this.isLowPerformance = false;
+        this.devicePixelRatio = window.devicePixelRatio || 1;
+        this.isFirstCheck = true;
 
-        // 仅在开发模式显示
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          this.fpsCounter.style.display = 'block';
-        }
+        // 设备信息
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        this.isTablet = /iPad|tablet|Nexus 7|Kindle Fire/i.test(navigator.userAgent) || (this.isMobile && window.innerWidth >= 768);
+        this.isSmallPhone = this.isMobile && window.innerWidth < 480;
+        this.isHighResolution = window.devicePixelRatio > 2 || window.innerWidth > 1600;
       }
 
       update() {
+        if (!this.isMonitoring) return;
+
+        // 帧计数
         this.frames++;
-        const now = performance.now();
-        const delta = now - this.lastTime;
+        const currentTime = performance.now();
+        this.timeElapsed += currentTime - this.lastTime;
+        this.lastTime = currentTime;
 
-        if (delta >= 1000) {
-          this.fps = Math.round((this.frames * 1000) / delta);
-          this.fpsCounter.textContent = `FPS: ${this.fps}`;
+        // 检查间隔
+        if (this.timeElapsed >= this.checkInterval) {
+          const fps = this.frames / (this.timeElapsed / 1000);
+          this.fpsArray.push(fps);
+
+          // 保留最近10次结果计算平均值
+          if (this.fpsArray.length > 10) {
+            this.fpsArray.shift();
+          }
+
+          this.fpsAverage = this.fpsArray.reduce((sum, value) => sum + value, 0) / this.fpsArray.length;
+
+          // 首次检查较为宽容，因为加载阶段帧率可能波动
+          const threshold = this.isFirstCheck ? this.lowPerformanceThreshold * 0.75 : this.lowPerformanceThreshold;
+          this.isFirstCheck = false;
+
+          // 检测是否低性能设备
+          const wasLowPerformance = this.isLowPerformance;
+          this.isLowPerformance = this.fpsAverage < threshold || this.isMobile || this.devicePixelRatio < 1;
+
+          // 性能模式改变时做出响应
+          if (this.isLowPerformance !== wasLowPerformance) {
+            this.adjustForPerformance();
+          }
+
+          // 重置计数器
           this.frames = 0;
-          this.lastTime = now;
+          this.timeElapsed = 0;
         }
+      }
 
-        return this.fps;
+      adjustForPerformance() {
+        if (this.isLowPerformance) {
+          console.log("检测到性能不足，正在调整渲染质量...");
+
+          // 降低渲染质量
+          if (renderer) {
+            renderer.setPixelRatio(1);
+          }
+
+          // 减少动画和效果
+          if (controls) {
+            controls.autoRotateSpeed = 0.2;
+            controls.dampingFactor = 0.05;
+          }
+
+          // 特别针对低性能移动设备的优化
+          if (this.isMobile || this.isSmallPhone) {
+            // 更激进的优化
+            if (renderer) {
+              renderer.antialias = false;
+            }
+
+            // 关闭高级视觉效果
+            document.querySelectorAll('.effects-heavy').forEach(el => {
+              el.style.display = 'none';
+            });
+          }
+        } else {
+          console.log("性能良好，启用完整效果...");
+
+          // 恢复渲染质量
+          if (renderer) {
+            const maxPixelRatio = this.isMobile ? 2 : 3;
+            renderer.setPixelRatio(Math.min(this.devicePixelRatio, maxPixelRatio));
+            renderer.antialias = !this.isMobile || this.isHighResolution;
+          }
+
+          // 恢复动画和效果
+          if (controls) {
+            controls.autoRotateSpeed = 0.25;
+            controls.dampingFactor = 0.08;
+          }
+
+          // 恢复视觉效果
+          document.querySelectorAll('.effects-heavy').forEach(el => {
+            el.style.display = '';
+          });
+        }
+      }
+
+      stop() {
+        this.isMonitoring = false;
+      }
+
+      resume() {
+        this.isMonitoring = true;
+        this.lastTime = performance.now();
       }
     }
 
@@ -412,8 +554,11 @@
     function init() {
       console.log("正在初始化场景...");
 
-      // 检测是否为移动设备
+      // 增强设备检测
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isTablet = /iPad|tablet|Nexus 7|Kindle Fire/i.test(navigator.userAgent) || (isMobile && window.innerWidth >= 768);
+      const isSmallPhone = isMobile && window.innerWidth < 480;
+      const isHighResolution = window.devicePixelRatio > 2 || window.innerWidth > 1600;
 
       // 检测浏览器性能
       const isLowPerformance = checkLowPerformanceBrowser();
@@ -424,66 +569,103 @@
       // 初始化场景
       scene = new THREE.Scene();
 
-      // 使用更小的FOV使观察更扁平，更容易看到边缘的标签
-      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+      // 根据设备调整FOV - 小屏幕手机使用更大FOV以显示更多内容
+      const fov = isSmallPhone ? 50 : 45;
+      camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-      // 调整初始视角，添加俯视角度使标签更加可见
-      camera.position.set(0, 100, isMobile ? 500 : 480);
+      // 根据设备类型调整相机位置
+      let cameraY, cameraZ;
+      if (isSmallPhone) {
+        cameraY = 80;
+        cameraZ = 520;
+      } else if (isTablet) {
+        cameraY = 100;
+        cameraZ = 500;
+      } else if (isHighResolution) {
+        cameraY = 120;
+        cameraZ = 450;
+      } else {
+        cameraY = 100;
+        cameraZ = 480;
+      }
 
-      // 初始化渲染器
+      // 调整初始视角
+      camera.position.set(0, cameraY, cameraZ);
+
+      // 初始化渲染器 - 根据设备性能调整
       renderer = new THREE.WebGLRenderer({
-        antialias: !isMobile, // 移动端关闭抗锯齿提高性能
+        antialias: !isMobile || isHighResolution, // 高分辨率设备开启抗锯齿
         alpha: true
       });
-      renderer.setClearColor(0x111122, 1); // 更深的背景色，接近黑色
+      renderer.setClearColor(0x111122, 1);
       renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 2) : window.devicePixelRatio); // 限制移动端像素比
+
+      // 根据设备调整像素比
+      const maxPixelRatio = isLowPerformance ? 1 : (isMobile ? 2 : 3);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
       container.appendChild(renderer.domElement);
 
-      // 添加光源
-      const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+      // 添加光源 - 根据设备性能调整
+      const ambientIntensity = isLowPerformance ? 0.6 : 0.5;
+      const directionalIntensity = isLowPerformance ? 0.6 : 0.8;
+
+      const ambient = new THREE.AmbientLight(0xffffff, ambientIntensity);
       scene.add(ambient);
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      const dirLight = new THREE.DirectionalLight(0xffffff, directionalIntensity);
       dirLight.position.set(1, 1, 2);
       scene.add(dirLight);
 
-      // 添加点光源增强节点亮度
-      const pointLight = new THREE.PointLight(0xffffff, 0.8);
-      pointLight.position.set(0, 0, 200);
-      scene.add(pointLight);
+      // 添加点光源 - 高性能设备添加
+      if (!isLowPerformance) {
+        const pointLight = new THREE.PointLight(0xffffff, 0.8);
+        pointLight.position.set(0, 0, 200);
+        scene.add(pointLight);
+      }
 
-      // 不再创建中心星球，改为网络图谱风格
-      // 可以添加一些装饰性的粒子或线条
+      // 创建装饰性粒子或线条
       createParticles();
 
-      // 添加在线人数显示
+      // 添加内容标识
       createOnlineCounter();
 
       // 创建网络图谱节点
-      createBubbles(isLowPerformance);
+      createBubbles(isLowPerformance, isSmallPhone, isTablet);
 
       // 初始化控制器
       console.log("正在初始化控制器...");
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
-      controls.dampingFactor = 0.08; // 增加阻尼，使旋转更平滑
+      controls.dampingFactor = 0.08;
       controls.enablePan = false;
-      controls.minDistance = isMobile ? 380 : 400;
-      controls.maxDistance = isMobile ? 700 : 800;
+
+      // 根据设备调整缩放范围
+      if (isSmallPhone) {
+        controls.minDistance = 350;
+        controls.maxDistance = 650;
+      } else if (isTablet) {
+        controls.minDistance = 380;
+        controls.maxDistance = 700;
+      } else if (isHighResolution) {
+        controls.minDistance = 400;
+        controls.maxDistance = 800;
+      } else {
+        controls.minDistance = 380;
+        controls.maxDistance = 700;
+      }
+
       controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.25; // 减慢自动旋转速度，让观察更自然
-      controls.zoomSpeed = isMobile ? 0.6 : 1.0; // 移动端减慢缩放速度提高控制性
-      controls.minPolarAngle = -Infinity; // 允许无限上下旋转
-      controls.maxPolarAngle = Infinity; // 允许无限上下旋转
-      controls.minAzimuthAngle = -Infinity; // 允许无限水平旋转
-      controls.maxAzimuthAngle = Infinity; // 允许无限水平旋转
-      controls.rotateSpeed = 0.75; // 稍微降低旋转速度，使控制更精确
-      controls.enableRotate = true; // 确保启用旋转
-      controls.noPan = true; // 禁用平移，专注于旋转
+      controls.autoRotateSpeed = isLowPerformance ? 0.2 : 0.25;
+      controls.zoomSpeed = isMobile ? 0.6 : 1.0;
+      controls.minPolarAngle = -Infinity;
+      controls.maxPolarAngle = Infinity;
+      controls.minAzimuthAngle = -Infinity;
+      controls.maxAzimuthAngle = Infinity;
+      controls.rotateSpeed = isLowPerformance ? 0.7 : 0.75;
+      controls.enableRotate = true;
+      controls.noPan = true;
 
       // 解除其他可能限制旋转的属性
       if (controls.constraints) {
-        // 如果存在约束对象，也要解除其约束
         if (controls.constraints.minPolarAngle !== undefined) controls.constraints.minPolarAngle = -Infinity;
         if (controls.constraints.maxPolarAngle !== undefined) controls.constraints.maxPolarAngle = Infinity;
       }
@@ -492,7 +674,6 @@
       const originalUpdate = controls.update;
       controls.update = function () {
         const result = originalUpdate.apply(this, arguments);
-        // 确保球体可以完全翻转，不受极角限制
         return result;
       };
 
@@ -504,8 +685,6 @@
       // 添加移动端特定的触摸事件
       if (isMobile) {
         document.getElementById('touch-instructions').style.opacity = 1;
-
-        // 添加双指缩放检测
         document.addEventListener('touchstart', handleTouchStart, { passive: false });
         document.addEventListener('touchmove', handleTouchMove, { passive: false });
         document.addEventListener('touchend', handleTouchEnd, { passive: false });
@@ -543,16 +722,27 @@
       return false;
     }
 
-    function createBubbles(isLowPerformance) {
+    function createBubbles(isLowPerformance, isSmallPhone, isTablet) {
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
       const N = bubbles.length;
 
-      // 统一星球半径和大小
-      const UNIFORM_SIZE = 6;  // 所有星球统一大小
-      const UNIFORM_SPHERE_RADIUS = 150;  // 统一球形分布半径
-      // 扁平化系数，使Y轴方向压缩，便于查看标签
-      const FLATTEN_FACTOR = 1.0;  // 改为1.0，使分布完全球形
+      // 根据设备类型调整星球大小和分布
+      let UNIFORM_SIZE, UNIFORM_SPHERE_RADIUS;
+
+      if (isSmallPhone) {
+        UNIFORM_SIZE = 5;  // 小屏幕手机星球略小
+        UNIFORM_SPHERE_RADIUS = 140;  // 小屏幕手机分布半径略小
+      } else if (isTablet) {
+        UNIFORM_SIZE = 6;
+        UNIFORM_SPHERE_RADIUS = 150;
+      } else {
+        UNIFORM_SIZE = 6;  // 正常星球大小
+        UNIFORM_SPHERE_RADIUS = 150;  // 正常分布半径
+      }
+
+      // 球形分布，无扁平化
+      const FLATTEN_FACTOR = 1.0;
 
       for (let i = 0; i < N; i++) {
         // 使用斐波那契球体分布算法，让节点更均匀分布在球面上
@@ -564,24 +754,26 @@
 
         // 计算位置坐标 - 应用扁平化系数到Y轴
         const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.cos(phi) * FLATTEN_FACTOR; // Y轴压缩
+        const y = r * Math.cos(phi) * FLATTEN_FACTOR;
         const z = r * Math.sin(phi) * Math.sin(theta);
 
-        // 创建气泡几何体，统一大小
+        // 创建气泡几何体，根据设备调整精度
         let bubbleGeo;
+        const nodeSize = UNIFORM_SIZE;
 
-        // 移动端使用较低分辨率的几何体提高性能，低性能设备使用更低分辨率
-        const nodeSize = UNIFORM_SIZE; // 统一大小，不再根据bubbles[i].size
-
+        // 根据设备性能调整几何体精度
+        let segments;
         if (isMobile) {
           if (isLowPerformance) {
-            bubbleGeo = new THREE.SphereGeometry(nodeSize, 8, 8); // 更低精度
+            segments = 8;
           } else {
-            bubbleGeo = new THREE.SphereGeometry(nodeSize, 16, 16);
+            segments = 16;
           }
         } else {
-          bubbleGeo = new THREE.SphereGeometry(nodeSize, 32, 32);
+          segments = 32;
         }
+
+        bubbleGeo = new THREE.SphereGeometry(nodeSize, segments, segments);
 
         // 保持色彩区分
         const bubbleMat = new THREE.MeshPhongMaterial({
@@ -598,9 +790,9 @@
         scene.add(mesh);
         bubbleMeshes.push(mesh);
 
-        // 为主节点添加发光效果
-        if (bubbles[i].isMain) {
-          const glowGeo = new THREE.SphereGeometry(nodeSize * 1.25, 32, 32);
+        // 为主节点添加发光效果（高性能设备）
+        if (bubbles[i].isMain && !isLowPerformance) {
+          const glowGeo = new THREE.SphereGeometry(nodeSize * 1.25, segments, segments);
           const glowMat = new THREE.MeshBasicMaterial({
             color: bubbles[i].color,
             transparent: true,
@@ -611,123 +803,164 @@
           scene.add(glowMesh);
         }
 
-        // 添加文字标签，确保移动端显示二级节点
+        // 添加文字标签
         if (bubbles[i].name) {
           // 低性能设备只显示主节点
           if (isLowPerformance && !bubbles[i].isMain) {
             continue;
           }
+          // 在小屏幕手机上，减少标签数量
+          if (isSmallPhone && !bubbles[i].isMain && Math.random() > 0.6) {
+            continue;
+          }
 
-          // 为所有节点创建标签，大小统一
-          createLabel(mesh, bubbles[i].name, isLowPerformance);
+          // 为节点创建标签
+          createLabel(mesh, bubbles[i].name, isLowPerformance, isSmallPhone, isTablet);
         }
       }
     }
 
     // 修改createLabel函数，将sprite对象与mesh关联起来以便后续更新
-    function createLabel(mesh, text, isLowPerformance) {
+    function createLabel(mesh, text, isLowPerformance, isSmallPhone, isTablet) {
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isHighResolution = window.devicePixelRatio > 2 || window.innerWidth > 1600;
 
-      // 创建2D画布
+      // 根据设备类型调整标签尺寸和样式
+      let fontSize, canvasWidth, canvasHeight, letterSpacing;
+
+      if (isSmallPhone) {
+        canvasWidth = 1280;
+        canvasHeight = 480;
+        fontSize = mesh.userData.isMain ? 44 : 30;
+        letterSpacing = "0px";
+      } else if (isTablet) {
+        canvasWidth = 1600;
+        canvasHeight = 640;
+        fontSize = mesh.userData.isMain ? 48 : 36;
+        letterSpacing = "1px";
+      } else if (isHighResolution) {
+        canvasWidth = 2560;
+        canvasHeight = 896;
+        fontSize = mesh.userData.isMain ? 52 : 40;
+        letterSpacing = "1px";
+      } else {
+        canvasWidth = 2048;
+        canvasHeight = 768;
+        fontSize = mesh.userData.isMain ? 50 : 38;
+        letterSpacing = "1px";
+      }
+
       const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
       const context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 设置更高分辨率的画布以提高清晰度
-      canvas.width = 2048;
-      canvas.height = 768;
+      // 调整文本位置
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
 
-      // 极大增大字体尺寸，确保可见
-      const FONT_SIZE = isMobile ? 160 : 240;
+      // 根据设备性能调整文本渲染质量
+      if (!isLowPerformance) {
+        // 优化渲染设置
+        context.textRendering = "optimizeLegibility";
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+      }
 
-      context.font = `Bold ${FONT_SIZE}px Arial`;
-      context.fillStyle = 'white';
+      // 设置文本样式
+      context.font = `${fontSize}px "Microsoft YaHei", "微软雅黑", "Helvetica Neue", Arial, sans-serif`;
       context.textAlign = 'center';
+      context.textBaseline = 'middle';
 
-      // 测量文本长度
-      const metrics = context.measureText(text);
-      const textWidth = metrics.width;
+      // 处理文字描边和阴影
+      if (mesh.userData.isMain) {
+        // 主节点标签有更强的视觉效果
+        context.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        context.shadowBlur = isLowPerformance ? 6 : 10;
+        context.shadowOffsetX = 2;
+        context.shadowOffsetY = 2;
+        context.fillStyle = '#ffffff';
 
-      // 增强文字阴影效果
-      context.shadowColor = 'rgba(0,0,0,1)';
-      context.shadowBlur = 15;
-      context.shadowOffsetX = 4;
-      context.shadowOffsetY = 4;
+        // 针对主节点应用强调效果
+        if (!isLowPerformance) {
+          // 绘制描边
+          context.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+          context.lineWidth = 6;
+          context.strokeText(text, centerX, centerY);
+        }
+      } else {
+        // 普通节点标签
+        context.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        context.shadowBlur = isLowPerformance ? 4 : 8;
+        context.shadowOffsetX = 1;
+        context.shadowOffsetY = 1;
+        context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      }
 
-      // 添加渐变背景提高对比度
-      const textHeight = FONT_SIZE;
-      const bgPadding = 40;
-      const bgX = canvas.width / 2 - textWidth / 2 - bgPadding;
-      const bgY = canvas.height / 2 - textHeight / 2 - bgPadding / 2;
-      const bgWidth = textWidth + bgPadding * 2;
-      const bgHeight = textHeight + bgPadding * 1.5;
+      // 应用字间距
+      if (letterSpacing !== "0px" && !isLowPerformance) {
+        let x = centerX - (context.measureText(text).width / 2);
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          const charWidth = context.measureText(char).width;
+          context.fillText(char, x + (charWidth / 2), centerY);
+          x += charWidth + parseFloat(letterSpacing);
+        }
+      } else {
+        // 直接绘制文本
+        context.fillText(text, centerX, centerY);
+      }
 
-      // 绘制更高对比度的背景
-      const gradient = context.createLinearGradient(bgX, bgY, bgX, bgY + bgHeight);
-      gradient.addColorStop(0, "rgba(40,40,100,0.95)");
-      gradient.addColorStop(1, "rgba(20,20,60,0.95)");
-      context.fillStyle = gradient;
-      context.roundRect(bgX, bgY, bgWidth, bgHeight, 20);
-      context.fill();
-
-      // 添加明亮的内发光边框
-      context.strokeStyle = 'rgba(150,200,255,0.5)';
-      context.lineWidth = 4;
-      context.roundRect(bgX, bgY, bgWidth, bgHeight, 20);
-      context.stroke();
-
-      // 文字绘制在画布中心，使用白色渐变
-      const textGradient = context.createLinearGradient(
-        canvas.width / 2,
-        canvas.height / 2 - FONT_SIZE / 2,
-        canvas.width / 2,
-        canvas.height / 2 + FONT_SIZE / 2
-      );
-      textGradient.addColorStop(0, "#ffffff");
-      textGradient.addColorStop(1, "#e0e0ff");
-      context.fillStyle = textGradient;
-      context.fillText(text, canvas.width / 2, canvas.height / 2 + FONT_SIZE / 3);
-
-      // 创建纹理和精灵，增强清晰度设置
+      // 创建贴图
       const texture = new THREE.CanvasTexture(canvas);
       texture.minFilter = THREE.LinearFilter;
       texture.magFilter = THREE.LinearFilter;
-      texture.anisotropy = 16; // 显著提高文字清晰度
+      texture.needsUpdate = true;
 
+      // 创建sprite材质
       const spriteMaterial = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,
-        opacity: 0.8 // 初始透明度稍微调低，让标签不过于抢眼
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false
       });
 
+      // 创建sprite
       const sprite = new THREE.Sprite(spriteMaterial);
 
-      // 调整标签尺寸，不要太大，保持与球体的和谐
-      const LABEL_SCALE = isMobile ? 12 : 16;
+      // 根据设备调整sprite尺寸
+      let spriteScale;
+      if (isSmallPhone) {
+        spriteScale = mesh.userData.isMain ? 80 : 60;
+      } else if (isTablet) {
+        spriteScale = mesh.userData.isMain ? 90 : 70;
+      } else if (isHighResolution) {
+        spriteScale = mesh.userData.isMain ? 110 : 90;
+      } else {
+        spriteScale = mesh.userData.isMain ? 100 : 80;
+      }
 
-      // 根据实际画布比例调整精灵大小
-      const aspectRatio = canvas.width / canvas.height;
-      sprite.scale.set(LABEL_SCALE * aspectRatio, LABEL_SCALE, 1);
+      sprite.scale.set(spriteScale, spriteScale * canvas.height / canvas.width, 1);
 
-      // 记录原始比例，用于后续动态调整
-      sprite.userData = {
-        baseScaleX: LABEL_SCALE * aspectRatio,
-        baseScaleY: LABEL_SCALE
-      };
+      // 保持与坐标系一致
+      const labelPos = new THREE.Vector3().copy(mesh.position);
+      const labelDistance = mesh.geometry.parameters.radius * 1.8;
 
-      // 设置标签位置 - 调整偏移量，在不遮挡星球的前提下不要离得太远
-      const position = mesh.position.clone();
-      const directionToCenter = position.clone().normalize();
+      // 计算标签位置，略微偏移以避免直接重叠
+      labelPos.normalize().multiplyScalar(labelDistance);
+      sprite.position.copy(labelPos);
 
-      // 调整标签偏移量
-      const labelOffset = 16;
-      position.add(directionToCenter.multiplyScalar(labelOffset));
+      // 关联到网格，便于后续位置更新
+      sprite.userData.mesh = mesh;
+      mesh.userData.label = sprite;
 
-      sprite.position.copy(position);
+      // 添加到场景
       scene.add(sprite);
 
-      // 将精灵关联到节点，以便后续更新
-      if (!mesh.userData.labels) mesh.userData.labels = [];
-      mesh.userData.labels.push(sprite);
+      return sprite;
     }
 
     // 调整标签缩放函数，使标签始终可见
@@ -784,10 +1017,99 @@
     }
 
     function onWindowResize() {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isTablet = /iPad|tablet|Nexus 7|Kindle Fire/i.test(navigator.userAgent) || (isMobile && window.innerWidth >= 768);
+      const isSmallPhone = isMobile && window.innerWidth < 480;
+      const isHighResolution = window.devicePixelRatio > 2 || window.innerWidth > 1600;
+      const isLandscape = window.innerWidth > window.innerHeight;
+
+      // 调整相机FOV以适应不同屏幕尺寸和方向
+      let fov;
+      if (isSmallPhone) {
+        fov = isLandscape ? 45 : 50;
+      } else if (isTablet) {
+        fov = isLandscape ? 43 : 45;
+      } else {
+        fov = 45;
+      }
+
       camera.aspect = window.innerWidth / window.innerHeight;
+      camera.fov = fov;
       camera.updateProjectionMatrix();
+
       renderer.setSize(window.innerWidth, window.innerHeight);
+
+      // 调整UI元素位置
+      updateUIElementsPosition();
+
+      // 对于移动设备，在方向变化时更新控制器设置
+      if (isMobile && controls) {
+        // 在横屏模式下调整旋转速度和阻尼因子
+        if (isLandscape) {
+          controls.rotateSpeed = 0.7;
+          controls.dampingFactor = 0.07;
+        } else {
+          controls.rotateSpeed = 0.75;
+          controls.dampingFactor = 0.08;
+        }
+      }
     }
+
+    // 更新UI元素位置函数
+    function updateUIElementsPosition() {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isLandscape = window.innerWidth > window.innerHeight;
+
+      // 调整按钮组位置
+      const btnGroup = document.querySelector('.btn-group');
+      if (btnGroup) {
+        if (isMobile && isLandscape) {
+          // 移动设备横屏模式
+          btnGroup.style.right = '20px';
+          btnGroup.style.bottom = '20px';
+        } else if (isMobile) {
+          // 移动设备竖屏模式
+          btnGroup.style.right = '15px';
+          btnGroup.style.bottom = '30px';
+        } else {
+          // 桌面设备
+          btnGroup.style.right = '30px';
+          btnGroup.style.bottom = '30px';
+        }
+      }
+
+      // 调整触摸指示器位置
+      const touchInstructions = document.getElementById('touch-instructions');
+      if (touchInstructions && isMobile) {
+        if (isLandscape) {
+          touchInstructions.style.bottom = '70px';
+          touchInstructions.style.right = '20px';
+        } else {
+          touchInstructions.style.bottom = '80px';
+          touchInstructions.style.right = '15px';
+        }
+      }
+
+      // 调整loading指示器位置
+      const loadingIndicator = document.getElementById('loading');
+      if (loadingIndicator) {
+        loadingIndicator.style.top = `${window.innerHeight / 2 - 50}px`;
+        loadingIndicator.style.left = `${window.innerWidth / 2 - 50}px`;
+      }
+    }
+
+    // 添加设备方向变化监听器
+    window.addEventListener('orientationchange', function () {
+      // 短暂延迟，确保DOM完全更新
+      setTimeout(function () {
+        onWindowResize();
+
+        // 检查性能，在方向变化后可能需要调整渲染参数
+        if (perfMonitor) {
+          perfMonitor.adjustForPerformance();
+        }
+      }, 300);
+    }, false);
 
     function onPointerMove(event) {
       // 获取触摸或鼠标位置
@@ -918,23 +1240,65 @@
     }
 
     function resetView() {
-      if (controls) {
-        // 先保存当前的自动旋转状态
-        const wasAutoRotating = controls.autoRotate;
+      if (!controls) return;
 
-        // 重置控制器
-        controls.reset();
+      // 根据设备类型调整重置视角
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isTablet = /iPad|tablet|Nexus 7|Kindle Fire/i.test(navigator.userAgent) || (isMobile && window.innerWidth >= 768);
+      const isSmallPhone = isMobile && window.innerWidth < 480;
+      const isHighResolution = window.devicePixelRatio > 2 || window.innerWidth > 1600;
 
-        // 恢复自动旋转状态
-        controls.autoRotate = wasAutoRotating;
+      // 创建GSAP补间动画，平滑过渡到初始视角
+      const duration = 1.5;
 
-        // 设置默认视角 - 减小俯视角度，使球体更圆
-        camera.position.set(0, 100, 450);
-        controls.target.set(0, 0, 0);
+      // 根据设备类型设置目标位置
+      let targetY, targetZ;
 
-        // 确保更新控制器
-        controls.update();
+      if (isSmallPhone) {
+        targetY = 80;
+        targetZ = 520;
+      } else if (isTablet) {
+        targetY = 100;
+        targetZ = 500;
+      } else if (isHighResolution) {
+        targetY = 120;
+        targetZ = 450;
+      } else {
+        targetY = 100;
+        targetZ = 480;
       }
+
+      // 创建动画，平滑过渡到初始视角
+      gsap.to(camera.position, {
+        x: 0,
+        y: targetY,
+        z: targetZ,
+        duration: duration,
+        ease: "power2.out",
+        onUpdate: function () {
+          camera.lookAt(scene.position);
+        }
+      });
+
+      // 重置控制器状态
+      gsap.to(controls.target, {
+        x: 0,
+        y: 0,
+        z: 0,
+        duration: duration,
+        ease: "power2.out",
+        onComplete: function () {
+          controls.update();
+
+          // 恢复自动旋转
+          setTimeout(function () {
+            controls.autoRotate = true;
+          }, 500);
+        }
+      });
+
+      // 临时关闭控制器自动旋转，避免与GSAP动画冲突
+      controls.autoRotate = false;
     }
 
     // 创建粒子系统作为背景
